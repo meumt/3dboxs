@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23151a22'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%23ffb347'/%3E%3C/svg%3E" />
+    <title>3dboxs — Gölge Kutu Tasarımcısı</title>
+    <meta name="description" content="Yazı veya SVG logodan, duvara ışıkla yansıyan LED gölge kutu maskesi tasarla ve STL olarak indir." />
+  </head>
+  <body>
+    <div id="app">
+      <aside id="panel">
+        <header class="panel-head">
+          <h1>3dboxs</h1>
+          <p>Gölge kutu tasarımcısı</p>
+        </header>
+        <div id="controls"></div>
+      </aside>
+
+      <main id="stage">
+        <div id="viewport"></div>
+
+        <div id="viewbar">
+          <button data-view="perspective" class="active">Perspektif</button>
+          <button data-view="front">Duvar</button>
+          <button data-view="side">Yandan</button>
+          <button data-view="detail">Detay</button>
+          <span class="sep"></span>
+          <label class="toggle"><input type="checkbox" id="toggle-rays" /> Işınlar</label>
+          <label class="toggle"><input type="checkbox" id="toggle-mask" checked /> Parça</label>
+        </div>
+
+        <div id="readout"></div>
+        <div id="notes"></div>
+      </main>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
