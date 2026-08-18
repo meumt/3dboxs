@@ -129,25 +129,45 @@ export function buildPanel(container, ctx) {
   const lampPreset = LAMP_PRESETS.find((p) => p.id === d.lampPreset) ?? LAMP_PRESETS[0];
 
   const lampGroup = group('4 · Lamba ve optik', [
-    select({ label: 'Lamba tipi', value: d.lampPreset,
+    select({ label: 'Lamba', value: d.lampPreset,
              options: LAMP_PRESETS.map((p) => ({ value: p.id, label: p.name })),
              onInput: (v) => ctx.setLampPreset(v) }),
     (dyn.lampNote = hint(lampPreset.note)),
-    (dyn.H = number({ label: 'H · LED\'in duvara uzaklığı', value: d.ledDistance, min: 8, max: 400, step: 1, unit: 'mm',
-                      onInput: (v) => set({ ledDistance: v }) })),
-    (dyn.G = slider({ label: 'G · LED ile maske arası', value: d.maskGap, min: 2, max: 120, step: 0.5, unit: 'mm',
-                      onInput: (v) => set({ maskGap: v }) })),
-    hint('Büyütme oranı M = H / G. G küçüldükçe duvardaki yazı büyür ama detay kaybolur.'),
     row([
-      (dyn.bore = number({ label: 'Lamba gövde çapı', value: d.boreDiameter, min: 0, max: 200, step: 1, unit: 'mm',
-                           onInput: (v) => set({ boreDiameter: v }) })),
-      (dyn.ledSize = number({ label: 'Işık yüzeyi çapı', value: d.ledSize, min: 0.5, max: 60, step: 0.5, unit: 'mm',
+      (dyn.lampDia = number({ label: 'Puck çapı', value: d.lampDiameter, min: 5, max: 200, step: 1, unit: 'mm',
+                              onInput: (v) => set({ lampDiameter: v }) })),
+      (dyn.lampDepth = number({ label: 'Puck yüksekliği', value: d.lampDepth, min: 2, max: 100, step: 1, unit: 'mm',
+                                onInput: (v) => set({ lampDepth: v }) })),
+    ]),
+    row([
+      (dyn.flux = number({ label: 'Işık akışı', value: d.luminousFlux, min: 0, max: 3000, step: 5, unit: 'lm',
+                           onInput: (v) => set({ luminousFlux: v }) })),
+      (dyn.ledSize = number({ label: 'Yayan yüzey çapı', value: d.ledSize, min: 0.5, max: 80, step: 0.5, unit: 'mm',
                               onInput: (v) => set({ ledSize: v }) })),
     ]),
-    hint('Işık yüzeyi büyüdükçe duvardaki kenarlar yumuşar (yarı gölge).'),
-    slider({ label: 'Maske kenar payı', value: d.maskMargin, min: 0, max: 40, step: 1, unit: 'mm',
+    hint('Puck ölçüleri yuvanın açılacağı boyutu belirler. Işık akışı duvardaki gerçek ' +
+         'aydınlığı (lüks) hesaplamak için kullanılır.'),
+
+    (dyn.H = number({ label: 'H · LED\'in duvara uzaklığı', value: d.ledDistance, min: 15, max: 400, step: 1, unit: 'mm',
+                      onInput: (v) => set({ ledDistance: v }) })),
+    (dyn.G = slider({ label: 'G · LED ile maske arası', value: d.maskGap, min: 2, max: 200, step: 0.5, unit: 'mm',
+                      onInput: (v) => set({ maskGap: v }) })),
+    hint('Büyütme M = H / G. H lambadan gelmiyor — puck sadece 1 cm boyunda, ' +
+         'onu duvardan ne kadar uzakta tutacağını AYAKLARIN boyu belirliyor. ' +
+         'Yani H senin tasarım kararın.'),
+
+    checkbox({ label: 'Diyafram tak (keskinlik için)', value: d.apertureEnabled,
+               onInput: (v) => { set({ apertureEnabled: v }); refreshAperture(v); } }),
+    (dyn.aperture = slider({ label: 'Diyafram çapı', value: d.apertureDiameter, min: 1, max: 60, step: 0.5, unit: 'mm',
+                             onInput: (v) => set({ apertureDiameter: v }) })),
+    (dyn.apertureHint = hint('Yayan yüzeyin önüne küçük bir delik koymak kenarları keskinleştirir ' +
+                             'ama ışığı alanla orantılı azaltır. Takas budur; sağdaki lüks değerine bak.')),
+
+    number({ label: 'Maske kenar payı', value: d.maskMargin, min: 0, max: 40, step: 1, unit: 'mm',
              onInput: (v) => set({ maskMargin: v }) }),
-    hint('Arkadaki maske levhası (yansıtmayı üreten küçük levha) çizimine göre otomatik boyutlanır.'),
+    (dyn.bore = number({ label: 'Maske orta deliği', value: d.boreDiameter, min: 0, max: 200, step: 1, unit: 'mm',
+                         onInput: (v) => set({ boreDiameter: v }) })),
+    hint('Puck arkada, kollarla taşınıyor; maskenin ortasında delik gerekmiyor (0 bırak).'),
   ]);
 
   // ------------------------------------------------- 5 · gölgeyi tamamlama
@@ -168,23 +188,28 @@ export function buildPanel(container, ctx) {
 
   // ------------------------------------------------------------ 6 · montaj
 
-  const mountGroup = group('6 · Lambaya bağlantı', [
-    checkbox({ label: 'Boyun (lambaya geçen bilezik)', value: d.collarEnabled,
-               onInput: (v) => set({ collarEnabled: v }) }),
-    checkbox({ label: 'Boyun boyunu G\'den otomatik hesapla', value: d.autoCollarHeight,
-               onInput: (v) => { set({ autoCollarHeight: v }); refreshCollar(v); } }),
-    (dyn.collarH = number({ label: 'Boyun boyu', value: d.collarHeight, min: 1, max: 150, step: 0.5, unit: 'mm',
-                            onInput: (v) => set({ collarHeight: v }) })),
-    slider({ label: 'Boyun et kalınlığı', value: d.collarThickness, min: 0.8, max: 6, step: 0.2, unit: 'mm',
-             onInput: (v) => set({ collarThickness: v }) }),
-    hint('Boyun, maskeyi LED\'den tam G kadar uzakta tutan ve iki levhayı birleştiren parçadır.'),
-    checkbox({ label: 'Kenar bordürü', value: d.rimEnabled, onInput: (v) => set({ rimEnabled: v }) }),
+  const mountGroup = group('6 · İskelet', [
+    hint('Puck, ışık konisinin dışından dolaşan kollarla taşınır. LED düzleminde koni ' +
+         'bir noktaya indiği için kollar orada hiçbir şey kesmez; gölgeleri yazının ' +
+         'değil, çevresindeki hâlenin üzerine düşer.'),
     row([
-      number({ label: 'Bordür boyu', value: d.rimHeight, min: 1, max: 60, step: 0.5, unit: 'mm',
-               onInput: (v) => set({ rimHeight: v }) }),
-      number({ label: 'Bordür kalınlığı', value: d.rimThickness, min: 0.8, max: 6, step: 0.2, unit: 'mm',
-               onInput: (v) => set({ rimThickness: v }) }),
+      number({ label: 'Kol sayısı', value: d.armCount, min: 2, max: 6, step: 1,
+               onInput: (v) => set({ armCount: v }) }),
+      number({ label: 'Kol genişliği', value: d.armWidth, min: 3, max: 20, step: 0.5, unit: 'mm',
+               onInput: (v) => set({ armWidth: v }) }),
     ]),
+    row([
+      number({ label: 'Ayak sayısı', value: d.footCount, min: 2, max: 6, step: 1,
+               onInput: (v) => set({ footCount: v }) }),
+      number({ label: 'Ayak genişliği', value: d.footWidth, min: 4, max: 25, step: 0.5, unit: 'mm',
+               onInput: (v) => set({ footWidth: v }) }),
+    ]),
+    hint('Ayaklar maskeyi duvardan (H − G) kadar uzakta tutar. Kapalı bir bordür yerine ' +
+         'ayrık ayaklar var; kapalı bordür ışığın duvara yayılmasını keserdi.'),
+    slider({ label: 'Yuva et kalınlığı', value: d.socketThickness, min: 1, max: 6, step: 0.2, unit: 'mm',
+             onInput: (v) => set({ socketThickness: v }) }),
+    checkbox({ label: 'Yuvanın arkası kapalı', value: d.socketBackPlate,
+               onInput: (v) => set({ socketBackPlate: v }) }),
   ], false);
 
   // ------------------------------------------------------------ 7 · köprüler
@@ -244,7 +269,10 @@ export function buildPanel(container, ctx) {
     dyn.arrow.style.display = shape === 'arrow' ? 'grid' : 'none';
     dyn.plateH.style.display = (shape === 'rect' || shape === 'arrow') ? 'grid' : 'none';
   }
-  function refreshCollar(auto) { dyn.collarH.style.display = auto ? 'none' : 'grid'; }
+  function refreshAperture(on) {
+    dyn.aperture.style.display = on ? 'grid' : 'none';
+    dyn.apertureHint.style.display = on ? 'block' : 'none';
+  }
   function refreshInvert(on) {
     dyn.frame.style.display = on ? 'grid' : 'none';
     dyn.invertHint.style.display = on ? 'block' : 'none';
@@ -257,7 +285,7 @@ export function buildPanel(container, ctx) {
 
   refreshShape(d.plateShape);
   refreshSource(d.source);
-  refreshCollar(d.autoCollarHeight);
+  refreshAperture(d.apertureEnabled);
   refreshInvert(d.invert);
   refreshCompletion(d.completeShadow);
 
@@ -266,6 +294,9 @@ export function buildPanel(container, ctx) {
       dyn.H.setValue?.(design.ledDistance);
       dyn.bore.setValue?.(design.boreDiameter);
       dyn.ledSize.setValue?.(design.ledSize);
+      dyn.lampDia.setValue?.(design.lampDiameter);
+      dyn.lampDepth.setValue?.(design.lampDepth);
+      dyn.flux.setValue?.(design.luminousFlux);
       dyn.tw.setValue?.(design.targetWallWidth);
       dyn.th.setValue?.(design.targetWallHeight);
       const p = LAMP_PRESETS.find((x) => x.id === design.lampPreset);

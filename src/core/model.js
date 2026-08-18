@@ -23,11 +23,14 @@
  */
 import { textToPolygons } from './text.js';
 import { buildPlate } from './plate.js';
-import { annulus, rimRing } from './housing.js';
+import { lampSocket, supportArms, wallFeet } from './frame.js';
 import { extrudeToPositions, geometryFromPositions, meshVolume } from './extrude.js';
 import { sealOpenEdges } from './seal.js';
 import { bounds, multiPolygonArea } from './polygons.js';
-import { solve, diagnostics, completionSize, occludedRadius, magnification } from './optics.js';
+import {
+  solve, diagnostics, completionSize, occludedRadius, magnification,
+  illuminance, describeIlluminance, apertureTradeoff,
+} from './optics.js';
 
 /** Filament yoğunlukları (g/cm³). */
 export const MATERIAL_DENSITY = { PLA: 1.24, PETG: 1.27, ABS: 1.04, ASA: 1.07 };
@@ -42,13 +45,18 @@ export function buildModel(design, { font, svgPolygons } = {}) {
   const warnings = [];
   const errors = [];
 
-  // 1) Optik.
+  // 1) Optik. Diyafram varsa ETKİN kaynak boyutu küçülür: kenarlar keskinleşir,
+  // geçen ışık alanla birlikte düşer.
+  const aperture = design.apertureEnabled
+    ? apertureTradeoff(design.ledSize, design.apertureDiameter)
+    : { effectiveSize: design.ledSize, transmission: 1 };
+
   const optics = solve({
     ledDistance: design.ledDistance,
     maskGap: design.maskGap,
     targetWallWidth: design.targetWallWidth,
     targetWallHeight: design.targetWallHeight,
-    ledSize: design.ledSize,
+    ledSize: aperture.effectiveSize,
   });
 
   if (!optics.valid) {
@@ -106,7 +114,8 @@ export function buildModel(design, { font, svgPolygons } = {}) {
 
   // 4) MASKE katmanı — çizimine göre otomatik boyutlanır.
   const maskMargin = design.maskMargin;
-  const minMaskPlate = design.boreDiameter + design.collarThickness * 4 + 4;
+  // Maske levhası en azından yuvayı ve kolları taşıyabilecek kadar geniş olmalı.
+  const minMaskPlate = design.lampDiameter + design.socketThickness * 2 + design.armWidth * 2 + 8;
   let maskPlateW = Math.max(maskArtW + maskMargin * 2, minMaskPlate);
   let maskPlateH = Math.max(maskArtH + maskMargin * 2, minMaskPlate);
   if (design.maskShape === 'circle') {
@@ -181,34 +190,50 @@ export function buildModel(design, { font, svgPolygons } = {}) {
     extrudeToPositions(face.polygons, positions, { thickness: design.plateThickness, z0: faceOffset });
   }
 
-  // Boyun: maskenin üstünden LED düzlemine kadar; yüz levhasını da deler geçer,
-  // böylece iki levha tek parça olur.
-  const collarHeight = design.autoCollarHeight
-    ? Math.max(1, design.maskGap - design.plateThickness)
-    : design.collarHeight;
+  // --- İskelet ---
+  // LED yayan yüzeyi yerel z = G'de (maskenin duvara bakan yüzünden G kadar
+  // ileride). Puck oradan geriye doğru lampDepth kadar yer kaplar.
+  const ledZ = design.maskGap;
+  const socket = lampSocket({
+    lampDiameter: design.lampDiameter,
+    lampDepth: design.lampDepth,
+    wallThickness: design.socketThickness,
+    backPlate: design.socketBackPlate,
+  });
 
-  if (design.collarEnabled && design.boreDiameter > 0 && collarHeight > 0) {
-    extrudeToPositions(
-      annulus(design.boreDiameter, design.collarThickness),
-      positions,
-      { thickness: collarHeight, z0: design.plateThickness },
-    );
+  extrudeToPositions(socket.ring, positions, { thickness: design.lampDepth, z0: ledZ });
+  if (socket.cap.length) {
+    extrudeToPositions(socket.cap, positions, {
+      thickness: design.socketThickness, z0: ledZ + design.lampDepth,
+    });
   }
 
-  if (design.rimEnabled && design.rimHeight > 0) {
-    const rim = rimRing({
-      shape: design.plateShape,
-      width: design.plateWidth,
-      height: design.plateShape === 'circle' || design.plateShape === 'square'
-        ? design.plateWidth : design.plateHeight,
-      cornerRadius: design.cornerRadius,
-      arrowTipRatio: design.arrowTipRatio,
-      arrowPointLeft: design.arrowPointLeft,
-      thickness: design.rimThickness,
-    });
-    if (rim.length) {
-      extrudeToPositions(rim, positions, { thickness: design.rimHeight, z0: faceOffset - design.rimHeight });
-    }
+  // Kollar: yuvanın kenarından maskenin kenarına düz gider. LED düzleminde ışık
+  // konisi bir noktaya indiği için orada hiçbir şey kesmezler; duvara doğru koni
+  // açıldıkça kollar da dışa açıldığından hep koninin dışında kalırlar.
+  const maskRadius = Math.max(maskPlateW, maskPlateH) / 2;
+  supportArms({
+    count: design.armCount,
+    innerRadius: socket.outerRadius - design.armThickness / 2,
+    outerRadius: maskRadius - design.armThickness / 2,
+    innerZ: ledZ + design.lampDepth / 2,
+    outerZ: design.plateThickness / 2,
+    width: design.armWidth,
+    thickness: design.armThickness,
+  }, positions);
+
+  // Ayaklar: maskeyi duvardan (H − G) kadar uzakta tutar. Sürekli bir bordür
+  // ışığın duvara yayılmasını tamamen keserdi, o yüzden ayrık ayaklar.
+  const standoff = design.ledDistance - design.maskGap;
+  if (standoff > 0.5) {
+    wallFeet({
+      count: design.footCount,
+      radius: maskRadius - design.footThickness / 2,
+      height: standoff,
+      width: design.footWidth,
+      thickness: design.footThickness,
+      z0: design.plateThickness / 2,
+    }, positions);
   }
 
   const seal = sealOpenEdges(positions);
@@ -257,11 +282,14 @@ export function buildModel(design, { font, svgPolygons } = {}) {
     occludedDiameter,
     faceDistanceFromWall,
     faceOffset,
-    collarHeight,
     wallWidth: wallW,
     wallHeight: wallH,
     silhouetteWidth: Math.max(maskPlateW * M, design.plateWidth * (faceMagnification || 1)),
     penumbra: optics.penumbra,
+    apertureTransmission: aperture.transmission,
+    effectiveLedSize: aperture.effectiveSize,
+    luxCenter: illuminance(design.luminousFlux * aperture.transmission, design.ledDistance, wallW * 0.25),
+    luxEdge: illuminance(design.luminousFlux * aperture.transmission, design.ledDistance, wallW * 0.5),
     solidArea: multiPolygonArea(mask.polygons) + (face ? multiPolygonArea(face.polygons) : 0),
     volumeCm3: volume / 1000,
     massGrams: (volume / 1000) * density,
@@ -270,7 +298,9 @@ export function buildModel(design, { font, svgPolygons } = {}) {
     openEdges: seal.remaining,
     bridges: mask.report.bridges + (face?.report.bridges ?? 0),
     looseParts: mask.report.looseParts + (face?.report.looseParts ?? 0),
-    totalDepth: (design.collarEnabled ? collarHeight + design.plateThickness : faceOffset + design.plateThickness),
+    totalDepth: ledZ + design.lampDepth + (design.socketBackPlate ? design.socketThickness : 0),
+    standoff,
+    ledZ,
   };
 
   const notes = diagnostics({
@@ -284,6 +314,45 @@ export function buildModel(design, { font, svgPolygons } = {}) {
     bedSize: design.bedSize,
     bridgeWidth: design.autoBridge ? design.bridgeWidth : 0,
   });
+
+  if (face && Math.max(maskPlateW, maskPlateH) > Math.max(stats.plateWidth, stats.plateHeight) + 1) {
+    notes.push({
+      level: 'warn',
+      text:
+        `Arkadaki maske levhası (${Math.round(maskPlateW)} mm) görünen levhadan ` +
+        `(${Math.round(stats.plateWidth)} mm) büyük; önden bakınca kenarları taşar. ` +
+        'Görünen levhayı büyüt ya da duvardaki hedef ölçüyü küçült.',
+    });
+  }
+
+  // Parça ne kadar büyük kalıyor? Bu, yayan yüzeyin boyutuyla doğrudan bağlı.
+  if (face && Number.isFinite(occludedDiameter) && wallW > 0) {
+    const ratio = occludedDiameter / wallW;
+    if (ratio > 0.55) {
+      notes.push({
+        level: 'warn',
+        text:
+          `Parça duvardaki yazının %${Math.round(ratio * 100)}'ini kaplıyor — yazı parçanın ` +
+          'çevresinde ancak ince bir halka olarak kalıyor. Sebep: yayan yüzey ' +
+          `${aperture.effectiveSize.toFixed(0)} mm olduğu için büyütmeyi (M=${M.toFixed(1)}) ` +
+          'artıramıyoruz, artırırsak kenarlar dağılıyor. Çözüm: difüzörü sök, diyafram tak ' +
+          'ya da hedef ölçüyü büyüt.',
+      });
+    }
+  }
+
+  // Işık miktarı hakkında dürüst bir not.
+  if (design.luminousFlux > 0 && Number.isFinite(stats.luxEdge)) {
+    notes.push({
+      level: stats.luxEdge < 5 ? 'warn' : 'info',
+      text:
+        `${design.luminousFlux} lm ile duvarda yazının iç kısmı ~${Math.round(stats.luxCenter)} lüks, ` +
+        `dış kenarı ~${Math.round(stats.luxEdge)} lüks olur — ${describeIlluminance(stats.luxEdge)}.` +
+        (design.apertureEnabled
+          ? ` Diyafram ışığın %${Math.round(aperture.transmission * 100)}'ini geçiriyor.`
+          : ''),
+    });
+  }
 
   if (design.completeShadow && face) {
     notes.push({

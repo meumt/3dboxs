@@ -157,3 +157,63 @@ test('levha alanı: kesilen alan levhadan küçük olmalı', () => {
   assert.ok(solidArea < outlineArea, 'yazı gerçekten kesilmiş olmalı');
   assert.ok(solidArea > outlineArea * 0.3, 'levhanın çoğu ayakta kalmalı');
 });
+
+// ---------------------------------------------------------------- ışık miktarı
+
+test('aydınlık: ters kare yasası ve Lambert profili', async () => {
+  const { illuminance } = await import('../src/core/optics.js');
+  // Merkez: E = Φ / (π·H²)
+  const H = 80;
+  const center = illuminance(65, H, 0);
+  assert.ok(Math.abs(center - 65 / (Math.PI * 0.08 ** 2)) < 0.01);
+
+  // Mesafe iki katına çıkınca merkez aydınlık dörtte bire iner.
+  assert.ok(Math.abs(illuminance(65, 160, 0) / center - 0.25) < 1e-6);
+
+  // Merkezden uzaklaştıkça düşer ve (H/d)⁴ ile orantılıdır.
+  const R = 150;
+  const d = Math.hypot(H, R);
+  assert.ok(Math.abs(illuminance(65, H, R) / center - (H / d) ** 4) < 1e-9);
+
+  // Akış iki katına çıkınca aydınlık da iki katına çıkar.
+  assert.ok(Math.abs(illuminance(130, H, R) / illuminance(65, H, R) - 2) < 1e-9);
+});
+
+test('diyafram: keskinlik kazandırır, ışığı alanla orantılı düşürür', async () => {
+  const { apertureTradeoff } = await import('../src/core/optics.js');
+  const t = apertureTradeoff(30, 10);
+  assert.equal(t.effectiveSize, 10);
+  assert.ok(Math.abs(t.transmission - (10 / 30) ** 2) < 1e-12);
+
+  // Diyafram kaynaktan büyükse hiçbir şey değişmez.
+  const none = apertureTradeoff(30, 50);
+  assert.equal(none.effectiveSize, 30);
+  assert.equal(none.transmission, 1);
+});
+
+test('iskelet parçaları su geçirmez ve hacimleri doğru', async () => {
+  const { beam, supportArms, wallFeet } = await import('../src/core/frame.js');
+  const { countOpenEdges } = await import('../src/core/seal.js');
+  const { geometryFromPositions, meshVolume } = await import('../src/core/extrude.js');
+
+  const one = beam([0, 0, 0], [10, 0, 0], 4, 3, []);
+  assert.equal(countOpenEdges(one), 0);
+  assert.ok(Math.abs(meshVolume(geometryFromPositions(one)) - 120) < 0.001);
+
+  const arms = supportArms({ count: 3, innerRadius: 22, outerRadius: 90,
+                             innerZ: 40, outerZ: 2, width: 6, thickness: 4 }, []);
+  assert.equal(countOpenEdges(arms), 0);
+
+  const feet = wallFeet({ count: 3, radius: 90, height: 40, width: 8, thickness: 6, z0: 0 }, []);
+  assert.equal(countOpenEdges(feet), 0);
+});
+
+test('diyafram takınca yarı gölge küçülür', async () => {
+  const { buildModel } = await import('../src/core/model.js');
+  const { defaultDesign } = await import('../src/core/state.js');
+  const font = loadFontSync(FONT);
+  const wide = buildModel({ ...defaultDesign(), apertureEnabled: false }, { font });
+  const narrow = buildModel({ ...defaultDesign(), apertureEnabled: true, apertureDiameter: 8 }, { font });
+  assert.ok(narrow.stats.penumbra < wide.stats.penumbra, 'diyafram kenarı keskinleştirmeli');
+  assert.ok(narrow.stats.luxEdge < wide.stats.luxEdge, 'ama ışık azalmalı');
+});

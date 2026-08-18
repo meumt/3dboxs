@@ -98,6 +98,10 @@ function showReadout(m) {
     );
   }
 
+  if (Number.isFinite(s.luxEdge)) {
+    rows.push(['Duvarda ışık', `<b>${Math.round(s.luxCenter)}</b> → ${Math.round(s.luxEdge)} lüks`]);
+  }
+
   rows.push(
     ['Kenar bulanıklığı', `${s.penumbra.toFixed(1)} mm`],
     ['Toplam derinlik', `${s.totalDepth.toFixed(1)} mm`],

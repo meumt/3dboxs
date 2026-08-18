@@ -178,3 +178,52 @@ export function occludedRadius(faceRadius, viewDistance, faceDistance) {
   if (!(D > zf)) return NaN;
   return faceRadius * (D / (D - zf));
 }
+
+/**
+ * IŞIK MİKTARI
+ *
+ * LED'in ışık akışı Φ (lümen) biliniyorsa duvardaki gerçek aydınlığı (lüks)
+ * hesaplayabiliriz. LED'ler yaklaşık LAMBERT yayıcıdır: I(θ) = I₀·cosθ ve
+ * yarım küreye toplam akış Φ = π·I₀ olduğundan I₀ = Φ/π (kandela).
+ *
+ * Duvarda merkezden R uzaklıktaki nokta için (LED duvara dik bakıyor):
+ *
+ *      E(R) = I₀ · cosθ_yayım · cosθ_geliş / d²
+ *           = (Φ/π) · H² / d⁴        ,  d = √(H² + R²)
+ *
+ * Merkez değeri: E(0) = Φ / (π·H²).
+ *
+ * NOT: Bu, maskeden geçen ışığın DÜŞTÜĞÜ yerdeki aydınlıktır. Maskenin
+ * kapattığı yerler karanlıktır; sayı, aydınlık kalan kısımlar için geçerlidir.
+ */
+
+/** Duvardaki aydınlık (lüks). H ve R milimetre, flux lümen. */
+export function illuminance(fluxLumens, ledDistance, radius) {
+  const H = ledDistance / 1000;          // m
+  const R = radius / 1000;               // m
+  if (!(H > 0) || !(fluxLumens > 0)) return NaN;
+  const d = Math.hypot(H, R);
+  return (fluxLumens / Math.PI) * (H * H) / (d ** 4);
+}
+
+/** Aydınlık değerini gündelik dille anlatır. */
+export function describeIlluminance(lux) {
+  if (!Number.isFinite(lux)) return '';
+  if (lux < 1) return 'karanlık odada bile zor seçilir';
+  if (lux < 10) return 'karanlık odada belli belirsiz';
+  if (lux < 50) return 'karanlık odada rahat okunur';
+  if (lux < 200) return 'loş odada net';
+  return 'aydınlık odada bile belli';
+}
+
+/**
+ * Diyafram (küçük delik) takınca ne kazanıp ne kaybettiğimiz.
+ *
+ * Işık yüzeyini küçültmek duvardaki kenarları keskinleştirir (yarı gölge
+ * s·(M−1) ile orantılı) ama geçen ışık alanla birlikte düşer. Takas budur.
+ */
+export function apertureTradeoff(sourceDiameter, apertureDiameter) {
+  const a = Math.min(sourceDiameter, apertureDiameter);
+  const transmission = (a / sourceDiameter) ** 2;
+  return { effectiveSize: a, transmission };
+}

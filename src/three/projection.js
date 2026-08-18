@@ -7,8 +7,8 @@
  * hızlı ve gölge haritası artefaktı içermiyor.
  *
  * Parlaklık düşüşü de analitik: R yarıçapındaki duvar noktası için
- *   E(R) / E(0) = (H / sqrt(H² + R²))³
- * (ters kare yasası × kosinüs eğim düzeltmesi).
+ *   E(R) / E(0) = (H / sqrt(H² + R²))⁴
+ * (ters kare yasası × kosinüs eğim düzeltmesi × Lambert yayım profili).
  *
  * NOT: Ekrana basarken bu ham orana bir POZLAMA eğrisi uyguluyoruz. Gerçek
  * düşüş o kadar serttir ki (merkezden 25 cm ötede ~100 kat) düz basıldığında
@@ -16,10 +16,16 @@
  * Eğri yalnızca ÖNİZLEMEYİ etkiler; paneldeki ölçüler ham fizikten gelir.
  */
 
-/** Duvardaki bağıl aydınlık (merkez = 1). */
+/**
+ * Duvardaki bağıl aydınlık (merkez = 1).
+ *
+ * LED yaklaşık Lambert yayıcı: I(θ) = I₀·cosθ. Duvardaki aydınlık
+ * E = I(θ)·cosθ/d² olduğundan oran (H/d)⁴ çıkar. (Yönden bağımsız nokta kaynak
+ * varsayılsaydı üs 3 olurdu; LED için 4 daha doğru.)
+ */
 export function relativeIrradiance(R, H) {
   const d = Math.hypot(H, R);
-  return (H / d) ** 3;
+  return (H / d) ** 4;
 }
 
 /** mm → piksel dönüştürücü kurar. */

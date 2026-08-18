@@ -21,30 +21,56 @@ export const FONTS = [
  * boreDiameter: maskenin geçeceği lamba gövdesinin çapı (mm)
  * ledSize     : ışık veren yüzeyin çapı (mm) — kenar keskinliğini belirler
  */
+/**
+ * Lamba hazır ayarları.
+ *
+ * lampDiameter : puck'ın çapı (mm) — yuva buna göre açılır
+ * lampDepth    : puck'ın yüksekliği (mm) — yuva derinliği
+ * luminousFlux : ışık akışı (lümen) — duvardaki aydınlık bundan hesaplanır
+ * ledSize      : ışık VEREN yüzeyin çapı (mm) — kenar keskinliğini belirler
+ *
+ * NOT: H (LED'in duvara uzaklığı) buraya yazılmaz. Puck sadece 1 cm boyunda
+ * olduğu için H'yi lamba değil, BİZİM tasarladığımız gövde belirliyor: ayakların
+ * boyu ne kadarsa LED duvardan o kadar uzakta durur. H bir tasarım parametresi.
+ */
 export const LAMP_PRESETS = [
   {
-    id: 'ikea-wall',
-    name: 'IKEA duvar LED apliği (ölç ve düzelt)',
-    ledDistance: 55,
-    boreDiameter: 40,
-    ledSize: 3,
-    note: 'Başlangıç değerleri. Lambanı duvara tak, LED yüzeyinin duvara uzaklığını ve gövde çapını cetvelle ölç.',
+    id: 'ikea-puck',
+    name: 'IKEA yuvarlak LED — Ø35 × 10 mm, 65 lm',
+    lampDiameter: 35,
+    lampDepth: 10,
+    luminousFlux: 65,
+    ledSize: 28,
+    note: 'Ölçüler senin verdiğin değerler. Yayan yüzey geniş (≈28 mm) olduğu için ' +
+          'kenarlar yumuşak çıkar; keskinlik istiyorsan diyaframı aç.',
   },
   {
-    id: 'puck',
-    name: 'Puck / spot LED (yassı)',
-    ledDistance: 35,
-    boreDiameter: 55,
-    ledSize: 10,
-    note: 'Yassı yuvarlak spotlar için. Geniş ışık yüzeyi kenarları yumuşatır.',
+    id: 'ikea-puck-diffuserless',
+    name: 'Aynı lamba, difüzörü sökülmüş',
+    lampDiameter: 35,
+    lampDepth: 10,
+    luminousFlux: 55,
+    ledSize: 8,
+    note: 'Difüzörü çıkarınca yayan yüzey küçülür ve kenarlar belirgin keskinleşir. ' +
+          'Bir miktar ışık kaybı olur.',
   },
   {
     id: 'pin',
-    name: 'Noktasal LED (COB, keskin)',
-    ledDistance: 70,
-    boreDiameter: 20,
+    name: 'Noktasal LED (COB)',
+    lampDiameter: 20,
+    lampDepth: 8,
+    luminousFlux: 100,
     ledSize: 2,
     note: 'En keskin gölge. Duvardaki yazı en net bununla çıkar.',
+  },
+  {
+    id: 'puck-large',
+    name: 'Büyük puck / spot (Ø55)',
+    lampDiameter: 55,
+    lampDepth: 15,
+    luminousFlux: 200,
+    ledSize: 40,
+    note: 'Bol ışık ama çok yumuşak kenar. Düşük büyütmede kullan.',
   },
 ];
 
@@ -64,16 +90,23 @@ export function defaultDesign() {
     svgLightHoles: true,
 
     // --- hedef (duvarda) ---
-    targetWallWidth: 500,           // mm
-    targetWallHeight: 500,          // mm
+    targetWallWidth: 300,           // mm
+    targetWallHeight: 300,          // mm
     lockAspect: true,               // yazının en-boy oranını koru
 
     // --- lamba / optik ---
     lampPreset: preset.id,
-    ledDistance: preset.ledDistance, // H
-    maskGap: 14,                     // G
+    lampDiameter: preset.lampDiameter,
+    lampDepth: preset.lampDepth,
+    luminousFlux: preset.luminousFlux,
     ledSize: preset.ledSize,
-    boreDiameter: preset.boreDiameter,
+    ledDistance: 80,                 // H — gövde derinliği, bizim seçimimiz
+    maskGap: 40,                     // G → M = 2.0
+    boreDiameter: 0,                 // maskenin ortasında delik yok (puck arkada)
+
+    // --- diyafram ---
+    apertureEnabled: false,
+    apertureDiameter: 10,
 
     // --- gölgeyi tamamlama ---
     completeShadow: true,            // yüz levhası duvardaki eksik parçayı tamamlasın
@@ -82,8 +115,8 @@ export function defaultDesign() {
 
     // --- yüz levhası (görünen parça) ---
     plateShape: 'circle',            // circle | square | rect | arrow
-    plateWidth: 180,
-    plateHeight: 180,
+    plateWidth: 220,
+    plateHeight: 220,
 
     // --- maske levhası (arkada, yansıtmayı üreten) ---
     maskShape: 'circle',
@@ -93,14 +126,15 @@ export function defaultDesign() {
     arrowTipRatio: 0.22,
     arrowPointLeft: true,
 
-    // --- bağlantı ---
-    collarEnabled: true,
-    autoCollarHeight: true,
-    collarHeight: 12,
-    collarThickness: 2.4,
-    rimEnabled: false,
-    rimHeight: 6,
-    rimThickness: 2.4,
+    // --- iskelet ---
+    socketThickness: 2.4,
+    socketBackPlate: true,
+    armCount: 3,
+    armWidth: 7,
+    armThickness: 4,
+    footCount: 3,
+    footWidth: 9,
+    footThickness: 6,
 
     // --- şablon köprüleri ---
     autoBridge: true,
@@ -125,8 +159,9 @@ export function applyLampPreset(design, presetId) {
   return {
     ...design,
     lampPreset: p.id,
-    ledDistance: p.ledDistance,
-    boreDiameter: p.boreDiameter,
+    lampDiameter: p.lampDiameter,
+    lampDepth: p.lampDepth,
+    luminousFlux: p.luminousFlux,
     ledSize: p.ledSize,
   };
 }

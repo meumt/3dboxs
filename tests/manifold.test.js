@@ -159,8 +159,9 @@ test('gölge tamamlama: yüz levhası çizimi GÖRÜNÜR ölçekte taşır, kopy
     `tamamlama ${s.completionWidth}, duvardaki ${s.wallWidth}`);
   assert.ok(s.completionWidth < s.wallWidth, 'paralaks yüzünden bir tık küçük olmalı');
   // Maske çiziminin küçük bir kopyası OLMAMALI — kullanıcının şikâyeti buydu.
-  assert.ok(s.completionWidth > s.artworkWidth * 3,
-    `tamamlama ${s.completionWidth} vs maske çizimi ${s.artworkWidth}: kopya üretiliyor`);
+  // Tamamlama, maske çiziminin yaklaşık M katı olmalı (yani duvardaki ölçekte).
+  assert.ok(s.completionWidth > s.artworkWidth * s.magnification * 0.9,
+    `tamamlama ${s.completionWidth}, maske çizimi ${s.artworkWidth}, M=${s.magnification}: kopya üretiliyor`);
 });
 
 test('gölge tamamlama: bakış mesafesi arttıkça ölçek duvardakine yakınsar', () => {

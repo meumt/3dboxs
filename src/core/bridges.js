@@ -58,11 +58,22 @@ function nearestPairs(islandPoints, bodyPoints, count) {
   return chosen;
 }
 
+/** Merkezi verilen noktada, `size` kenarlı kare yama. */
+function patchQuad(center, size) {
+  const h = size / 2;
+  const [x, y] = center;
+  const ring = [[x - h, y - h], [x + h, y - h], [x + h, y + h], [x - h, y + h]];
+  ring.push([...ring[0]]);
+  return [[ring]];
+}
+
 /** A ve B noktalarını birleştiren, `width` kalınlığında dikdörtgen köprü. */
 function bridgeQuad(a, b, width, overshoot) {
   let dx = b[0] - a[0], dy = b[1] - a[1];
   const len = Math.hypot(dx, dy);
-  if (len < 1e-9) return null;
+  // Ada ana gövdeye NOKTADAN değiyorsa yön vektörü tanımsız kalır. Nokta teması
+  // baskıda hiçbir şey tutmaz; oraya küçük bir kare yama koyup gerçekten kaynatıyoruz.
+  if (len < 1e-6) return patchQuad(a, width);
   dx /= len; dy /= len;
   const px = -dy, py = dx;              // dikey birim vektör
   const hw = width / 2;
@@ -92,9 +103,12 @@ function bridgeQuad(a, b, width, overshoot) {
 export function bridgeIslands(mp, {
   width = 1.8,
   perIsland = 2,
-  minIslandArea = 1.0,
+  minIslandArea = null,
   maxIterations = 60,
 } = {}) {
+  // Köprü kalınlığının iki katından küçük adalar zaten basılamaz: ne köprü
+  // tutar ne de parça ayakta kalır. Baştan atmak, sonradan kopuk bırakmaktan iyi.
+  const dropBelow = minIslandArea ?? Math.max(4, (width * 2) ** 2);
   if (!Array.isArray(mp) || mp.length <= 1) {
     return { polygons: mp ?? [], bridges: 0, dropped: 0 };
   }
@@ -104,8 +118,10 @@ export function bridgeIslands(mp, {
   let dropped = 0;
 
   // Çok küçük kırıntıları at (baskıda zaten tutunamazlar).
+  const largest = Math.max(...current.map(polygonArea));
   const filtered = current.filter((poly) => {
-    if (polygonArea(poly) < minIslandArea) { dropped++; return false; }
+    const area = polygonArea(poly);
+    if (area < largest && area < dropBelow) { dropped++; return false; }
     return true;
   });
   current = filtered.length ? filtered : current;

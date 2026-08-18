@@ -18,10 +18,13 @@ hesaplar, 3B gösterir, **STL** olarak verir.
 ```
    DUVAR |<--------------- H ---------------->| LED
          |                                     |
-         |        MASKE        YÜZ             |
-         |          |           |              |
-         |<-- H−G ->|           |              |
-         |<------- zf --------->|              |
+         |        MASKE        YÜZ            ___
+         |          |           |            /   \  LED yuvası
+         |<-- H−G ->|           |   ___----''     |  (puck buraya oturur)
+         |<------- zf --------->|--'              |
+         |          |                        \___/
+         |        ayak            kol
+         |     (duvara basar)  (koninin dışından dolaşır)
 ```
 
 - **H** — LED çipinin duvara olan uzaklığı
@@ -32,8 +35,23 @@ hesaplar, 3B gösterir, **STL** olarak verir.
   **görünür ölçekte** taşır ve duvardaki yazının kendi gövdesinin kapattığı orta
   kısmını **tamamlar**.
 
-Lambanın gövdesi her iki levhanın ortasındaki delikten geçer; boyun ikisini
-birbirine ve lambaya bağlar. Tek parça basılır.
+Puck, levhaların ortasındaki bir delikten GEÇMEZ — parçanın içine, arkadaki
+yuvaya oturur ve duvara bakar. LED ile maske arasına hiçbir şey giremez: araya
+konan bir tüp ışık konisini kırpar ve maskenin yalnızca ortası aydınlanır.
+Bu yüzden yuva, ışık konisinin dışından dolaşan kollarla taşınır.
+
+Kol, yuvanın kenarından maskenin kenarına düz gider. LED düzleminde ışık konisi
+bir noktaya indiği için oradaki kol hiçbir şeyi kesmez; duvara doğru koni
+açıldıkça kol da dışa açıldığından hep koninin dışında kalır. Kolların gölgesi
+yazının değil, çevresindeki hâlenin üzerine düşer.
+
+Ayaklar maskeyi duvardan `H − G` kadar uzakta tutar. Kapalı bir bordür yerine
+ayrık ayaklar var — kapalı bordür ışığın duvara yayılmasını tamamen keserdi.
+
+**H lambadan gelmiyor.** Puck sadece 1 cm boyunda; LED'i duvardan ne kadar
+uzakta tutacağını ayakların boyu belirliyor. Yani `H` bir tasarım kararı.
+
+Hepsi tek parça basılır.
 
 ### Büyütme
 
@@ -93,10 +111,43 @@ LED gerçekte nokta değil. Işık veren yüzeyin çapı `s` ise duvardaki kenar
 bulanıklığı yaklaşık `s × (M − 1)` olur. Keskin yazı istiyorsan küçük ışık
 yüzeyi (COB/noktasal LED) kullan.
 
-### Parlaklık düşüşü
+### Ne kadar ışık düşüyor?
 
-Merkez en parlak, kenarlar hızla söner: `E(R)/E(0) = (H / √(H²+R²))³`
-(ters kare yasası × kosinüs eğim düzeltmesi). Bu gerçek ve kaçınılmaz.
+LED'ler yaklaşık **Lambert yayıcıdır**: `I(θ) = I₀·cosθ` ve yarım küreye toplam
+akış `Φ = π·I₀` olduğundan `I₀ = Φ/π`. Duvarda merkezden `R` uzaklıkta:
+
+```
+E(R) = I₀ · cosθ_yayım · cosθ_geliş / d²  =  (Φ/π) · H² / d⁴     ,  d = √(H²+R²)
+```
+
+Yani düşüş `(H/d)⁴` ile gider — merkez çok parlak, kenarlar hızla söner.
+Bu gerçek ve kaçınılmaz.
+
+Işık akışını girersen panel duvardaki **gerçek aydınlığı lüks cinsinden**
+gösterir. Örnek: 65 lm, H = 80 mm, hedef 300 mm →
+yazının iç kısmı ~900 lüks, dış kenarı ~160 lüks. Loş odada rahatça okunur.
+
+| Lüks | Nasıl görünür |
+|---|---|
+| < 1 | karanlık odada bile zor seçilir |
+| 1–10 | karanlık odada belli belirsiz |
+| 10–50 | karanlık odada rahat okunur |
+| 50–200 | loş odada net |
+| > 200 | aydınlık odada bile belli |
+
+### Keskinlik ↔ ışık takası
+
+Yayan yüzey büyükse kenarlar yumuşar. 35 mm'lik difüzörlü bir puck'ta
+`s = 28 mm` ve `M = 2` iken bulanıklık `28 × (2−1) = 28 mm` olur — 300 mm'lik
+bir yazıda yaklaşık %9.
+
+Üç çözüm var, üçü de bir şeyden ödün verir:
+
+| Yol | Kazanç | Bedel |
+|---|---|---|
+| Difüzörü sök | Yayan yüzey 28 → ~8 mm, kenar 3–4 kat keskin | Bir miktar ışık kaybı |
+| **Diyafram** tak | İstediğin kadar keskin | Işık alanla orantılı düşer: 8 mm delik, 30 mm yüzeyin ancak %7'sini geçirir |
+| `G`'yi artır (M'i düşür) | Kenar keskinleşir | Maskeye daha büyük çizim gerekir, parça büyür |
 
 > Önizlemedeki **pozlama eğrisi** yalnızca ekranda gördüğünü etkiler
 > (fotoğraf makinesinin pozu gibi). Ölçü panelindeki değerler ham fizikten gelir.
@@ -129,12 +180,13 @@ Hazır ayarlar sadece başlangıç noktasıdır, **kesin ürün verisi değildir
 
 | Ölçü | Nasıl ölçülür |
 |---|---|
-| **H** | Duvar yüzeyinden LED çipinin ön yüzüne kadar (cetveli duvara dayayıp oku) |
-| **Gövde çapı** | Maskenin geçeceği silindirik gövdenin çapı — boyun buna oturur |
-| **Işık yüzeyi çapı** | Işık veren parlak alanın çapı (difüzör varsa onun çapı) |
+| **Puck çapı** | Puck'ın dış çapı — yuva buna göre açılır |
+| **Puck yüksekliği** | Puck'ın kalınlığı — yuva derinliği |
+| **Işık akışı** | Kutusunda yazar (lm). Duvardaki aydınlığı bundan hesaplıyoruz |
+| **Yayan yüzey çapı** | Işık veren parlak alanın çapı (difüzör varsa onun çapı) |
 
-`G`'yi sen seçersin: büyütmeyi belirleyen ayardır. Parçanın boyun boyu buna göre
-otomatik hesaplanır.
+`H` ve `G`'yi sen seçersin: `H` ayakların boyu, `G` de büyütmeyi belirler.
+Yuva ve kollar puck ölçülerine göre otomatik üretilir.
 
 ---
 
@@ -218,7 +270,7 @@ src/
     model.js       iki katmanı kurup birleştirir
     extrude.js     2B → 3B katı (earcut + yan duvarlar)
     seal.js        açık kenarları dikme (su geçirmezlik)
-    housing.js     boyun ve kenar bordürü
+    frame.js       LED yuvası, taşıyıcı kollar, duvar ayakları
   three/
     projection.js  duvar dokusu (analitik yansıtma)
     viewer.js      3B sahne
