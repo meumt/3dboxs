@@ -222,6 +222,48 @@ function baslikBloguTesti() {
     'başlık bloğu: taşan başlıklı ek kolonlar nota toplanır');
 }
 
+function kolonSiniriTesti() {
+  // Poz değeri, başlığının solunda duruyor ve sınır bir kelimeyi *kesmiyor*.
+  // Sınır etiket ortalarına göre alınırsa poz projeye yapışıyor ve listede
+  // "AKU...LC0172 4" gibi uydurma projeler çıkıyor.
+  const k = kelime;
+  const kelimeler = [
+    k('No', 26, 37, 100), k('Proje', 268, 290, 100), k('Poz', 398, 412, 100),
+    k('Malzeme', 483, 520, 100), k('Kodu', 521, 543, 100), k('Miktar', 704, 727, 100),
+    k('00001', 21, 43, 120),
+    k('AKU.0120.40UJA.0.KZ.LC0172', 219, 325, 120),
+    k('4', 330, 336, 120),                 // poz — başlığın çok solunda
+    k('4600032199', 471, 515, 120),
+    k('5', 700, 710, 120),
+  ];
+  const { kalemler } = A().ayristir([{ no: 1, genislik: 792, yukseklik: 612, kelimeler }]);
+  esit(kalemler.length, 1, 'kolon sınırı: tek kalem');
+  esit(kalemler[0].proje, 'AKU.0120.40UJA.0.KZ.LC0172',
+    'kolon sınırı: poz projeye yapışmaz');
+  esit(kalemler[0].poz, '4', 'kolon sınırı: poz kendi kolonunda');
+  esit(kalemler[0].kod, '4600032199', 'kolon sınırı: malzeme kodu yerinde');
+  esit(kalemler[0].miktar, '5', 'kolon sınırı: miktar yerinde');
+}
+
+function bosKolonTesti() {
+  // Hiç verisi olmayan kolonların (Thickness / Quality) sınırı, uzaktaki bir
+  // koridora savrulup dolu kolonların verisini yutmamalı.
+  const k = kelime;
+  const kelimeler = [
+    k('No', 26, 37, 100), k('Material', 53, 84, 100), k('Description', 88, 130, 100),
+    k('Thickness', 141, 178, 100), k('Quality/', 185, 216, 100),
+    k('Project', 232, 262, 100), k('Drawing', 266, 295, 100), k('Number', 300, 325, 100),
+    k('Quantity', 551, 584, 100), k('Unit', 593, 609, 100),
+    k('000010', 21, 42, 120), k('GÖMÜLÜ', 49, 76, 120),
+    k('AKU.0120.40UJA.0.KZ.LC0174', 221, 306, 120),
+    k('1', 550, 554, 120), k('ADT', 590, 602, 120),
+  ];
+  const { kalemler } = A().ayristir([{ no: 1, genislik: 792, yukseklik: 612, kelimeler }]);
+  esit(kalemler[0].metin, 'GÖMÜLÜ', 'boş kolon: malzeme metni yerinde kalır');
+  esit(kalemler[0].proje, 'AKU.0120.40UJA.0.KZ.LC0174', 'boş kolon: proje yerinde kalır');
+  esit(kalemler[0].miktar, '1', 'boş kolon: miktar yerinde kalır');
+}
+
 async function veritabaniTesti({ baslik, kalemler }) {
   const db = await TT.Veritabani.ac();
   const { talepId, kalemSayisi } = db.talepEkle({
@@ -251,6 +293,10 @@ async function veritabaniTesti({ baslik, kalemler }) {
 
   dogru(db.pdfVarMi('ozet1'), 'kopya: aynı PDF özeti tanınır');
   esit(db.pdfVarMi('baska'), null, 'kopya: farklı özet tanınmaz');
+  dogru(db.talepNoVarMi(baslik.talepNo), 'kopya: kayıtlı talep no tanınır');
+  esit(db.talepNoVarMi('0000000'), null, 'kopya: kayıtsız talep no tanınmaz');
+  esit(db.talepNoVarMi(' ' + baslik.talepNo + ' ').talep_no, baslik.talepNo,
+    'kopya: talep no boşluklardan etkilenmez');
 
   const ilk = db.kalemler()[0];
   db.kalemDurumu(ilk.id, 'onay');
@@ -309,6 +355,8 @@ async function veritabaniTesti({ baslik, kalemler }) {
     await ikinciFormTesti();
     await ucuncuFormTesti();
     baslikBloguTesti();
+    kolonSiniriTesti();
+    bosKolonTesti();
     await veritabaniTesti(cozum);
   } catch (e) {
     sonuclar.push({ ad: 'beklenmeyen hata', gecti: false, ayrinti: String(e && e.stack || e) });

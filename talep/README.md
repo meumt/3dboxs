@@ -49,6 +49,20 @@ no, kaç kalem, metin katmanından mı OCR'dan mı okundu, bir sorun var mı.
   ekranını açar, düzeltip listeye dönersiniz.
 - **Kaydet** yalnız işaretli formları yazar.
 
+### Aynı talebi iki kez ekleme
+
+Bir talep numarası veritabanında yalnızca bir kez bulunabilir. Aynı numarayı
+taşıyan ikinci bir form geldiğinde onay ekranı kaydetmeyi kapatır ve şunu der:
+
+> *0022866 numaralı talep zaten kayıtlı, aynı numarayı ikinci kez ekleyemiyorum.
+> İsterseniz öncekini silip bunu yeniden yükleyin.*
+
+Düzeltilmiş bir formu yerine koymak istiyorsanız **Öncekini sil, bunu kaydet**
+düğmesi tek adımda yapar: eski talep, kalemleri ve PDF'i silinir, yenisi yazılır.
+Aynı PDF dosyası ikinci kez geldiğinde de (sha256'sından tanınır) aynı şey olur.
+Toplu eklemede çakışan formlar **Kopya** işaretlenir ve seçili gelmez — hem
+kayıtlı taleplerle hem de aynı seçimdeki diğer dosyalarla karşılaştırılır.
+
 ### Gruplama
 
 **Taleplere göre grupla** işaretliyken her talep bir başlık satırıyla geliyor.
@@ -144,12 +158,43 @@ OCR motoru ve dil modelleri `js/kutuphane/ocr/` klasöründe hazır duruyor
 (~13 MB) ve yalnızca ilk OCR'da belleğe alınır. İnternet gerekmez. OCR'da
 `0/O`, `Ø/@` gibi karışmalar olabilir — onay ekranı tam da bunun için var.
 
+## Aynı klasörü birkaç kişi kullanınca
+
+Klasör ağ üzerinden paylaşılıyorsa herkesin tarayıcısında veritabanının kendi
+kopyası açılır. Hiçbir önlem alınmazsa en son yazan, diğerlerinin o sırada
+eklediklerini siler. Bunun için iki şey yapılıyor:
+
+**Her değişiklik kısa bir işlem.** Bir kalem işaretlediğinizde ya da form
+kaydettiğinizde sırayla: klasördeki kilit alınır → `talepler.db` diskte
+değiştiyse yeniden okunur → değişiklik uygulanır → dosya yazılır → kilit
+bırakılır. Kilit yalnızca bu üçlü boyunca, birkaç on milisaniye tutulur; PDF
+okuma ve OCR kilidin dışında kalır.
+
+**Kilit** `talepler.kilit` adlı küçük bir dosya. File System Access API'de
+"varsa oluşturma" gibi atomik bir işlem olmadığı için iddia-doğrula yöntemi
+kullanılıyor: kilit yazılır, kısa bir süre beklenir, tekrar okunur; hâlâ bizdeyse
+iş yapılır, biri araya girdiyse rastgele bir süre sonra yeniden denenir. Sekmesi
+kapanan birinin kilidi, dosya 15 saniye boyunca hiç değişmezse devralınır
+(makinelerin saatleri farklı olabildiği için karşı tarafın zaman damgasına
+bakılmaz, dosyanın kıpırdamaması ölçülür).
+
+Ayrıca her sekme 6 saniyede bir (ve pencereye dönüldüğünde) dosyanın değişip
+değişmediğine bakar; başkası eklediyse liste kendiliğinden tazelenir. Bir
+pencere açıkken ya da hücre düzenlenirken tazeleme yapılmaz.
+
+**Dürüst sınır:** bu, dosya paylaşımı üzerine kurulmuş *iyi bir yaklaşım*, veri
+tabanı sunucusu değil. İddia-doğrula kilidinin teorik bir yarış aralığı var
+(iki sekme aynı milisaniyede kilidi yazarsa). Üç sekmeyle eşzamanlı yazma testi
+geçiyor ve pratikte 3-5 kişilik kullanımda sorun çıkarmaz; ama on kişi sürekli
+yazacaksa doğru cevap küçük bir sunucudur.
+
 ## Veriler nerede
 
 Seçtiğiniz klasörde:
 
 ```
 talepler.db     SQLite veritabanı — DB Browser, Python, Excel eklentileri hepsi açar
+talepler.kilit  yazma kilidi (yalnız yazma anında var olur)
 pdfler/         kaydedilen talep PDF'leri (talepno_özet.pdf)
 ```
 
@@ -229,7 +274,11 @@ uyarı çıkar; kayıt öncesi elle düzeltilir.
 
 `test.html` dosyasına çift tıklayın. Örnek formların eksiksiz okunduğunu, Türkçe
 aramayı, kolon sınırı onarımını, iki satıra taşan başlıkları, onay/red
-durumlarını ve veritabanı işlemlerini doğrular (90 test).
+durumlarını ve veritabanı işlemlerini doğrular (101 test).
+
+Paylaşımlı klasör davranışı (kilit, eşzamanlı yazma, kopya engelleme) tarayıcı
+testine sığmıyor; o Playwright ile iki-üç sekme aynı gerçek klasöre bağlanarak
+ayrıca doğrulandı.
 
 ## Bilinen sınırlar
 

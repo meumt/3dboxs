@@ -211,16 +211,16 @@ TT.ayristirici = (() => {
   /**
    * Kolon sınırlarını veri satırlarına bakarak keskinleştirir.
    *
-   * Sınır başta iki başlık etiketinin ortası olarak alınıyor, ama başlık ortalı
-   * yazılıp veri sola dayalı olduğunda bu orta nokta bir hücrenin *içine*
-   * düşebiliyor: bir formda "Item/Poz" başlığı x=374'ten başlarken altındaki
-   * "TA5" 341'de duruyor ve proje kolonuna kayıyordu.
+   * Sınır başta iki başlık etiketinin ortası olarak alınıyor, ama başlıklar ortalı
+   * yazılıp veri sola dayandığında bu nokta yanlış yere düşüyor: "Item/Poz"
+   * başlığı x=374'ten başlarken altındaki poz değeri 341'de duruyor ve proje
+   * kolonuna karışıyor — listede "AKU...LC0172 4" gibi uydurma projeler çıkıyordu.
    *
-   * Çözüm: veri kelimelerinin kapladığı aralıkları çıkarıp aralarındaki boş
-   * koridorları buluyoruz. Bir sınır bir kelimenin ortasından geçiyorsa, yakındaki
-   * en uygun koridorun ortasına çekiliyor. "Yakın" ölçüsü dar olan kolonun
-   * genişliğine bağlı; böylece hiç verisi olmayan bir kolonun sınırı yerinden
-   * oynamıyor.
+   * Çözüm: veri kelimelerinin kapladığı aralıklar çıkarılıp aralarındaki boş
+   * koridorlar bulunuyor; her sınır, kendisine en yakın koridorun ortasına
+   * çekiliyor. Tek kısıt sınırın ayırdığı iki etiketin *merkezleri* arasında
+   * kalması — böylece hiç verisi olmayan bir kolonun (boş "Thickness" gibi)
+   * sınırı uzaktaki bir koridora savrulmuyor.
    */
   function sinirlariVeriyeGoreDuzelt(kolonlar, veriSatirlari) {
     const araliklar = [];
@@ -245,21 +245,24 @@ TT.ayristirici = (() => {
     if (!koridorlar.length) return kolonlar;
 
     const yeni = kolonlar.map((k) => ({ ...k }));
+    let oncekiSinir = -Infinity;
     for (let i = 0; i < yeni.length - 1; i++) {
-      const sinir = yeni[i].sag;
-      if (!dolu.some(([a, b]) => sinir > a && sinir < b)) continue; // zaten boşlukta
-      const enFazlaKayma =
-        0.7 * Math.min(yeni[i].x1 - yeni[i].x0, yeni[i + 1].x1 - yeni[i + 1].x0);
+      const asil = yeni[i].sag;
+      // Sınır, ayırdığı iki etiketin *merkezleri* arasında kalmak zorunda.
+      // Bu sayede hiç verisi olmayan bir kolonun sınırı uzaktaki bir koridora
+      // savrulmuyor, olan kolonlarınki ise doğru boşluğa oturuyor.
+      const solMerkez = (yeni[i].x0 + yeni[i].x1) / 2;
+      const sagMerkez = (yeni[i + 1].x0 + yeni[i + 1].x1) / 2;
       let enIyi = null;
       for (const orta of koridorlar) {
-        const uzaklik = Math.abs(orta - sinir);
-        if (uzaklik > enFazlaKayma) continue;
+        if (orta <= solMerkez || orta >= sagMerkez) continue;
+        const uzaklik = Math.abs(orta - asil);
         if (!enIyi || uzaklik < enIyi.uzaklik) enIyi = { orta, uzaklik };
       }
-      if (enIyi) {
-        yeni[i].sag = enIyi.orta;
-        yeni[i + 1].sol = enIyi.orta;
-      }
+      const sinir = Math.max(enIyi ? enIyi.orta : asil, oncekiSinir);
+      oncekiSinir = sinir;
+      yeni[i].sag = sinir;
+      yeni[i + 1].sol = sinir;
     }
     return yeni;
   }

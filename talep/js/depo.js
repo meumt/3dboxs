@@ -18,6 +18,15 @@ TT.depo = (() => {
   const IDB_ADI = 'talep-takip';
   const DB_DOSYA = 'talepler.db';
   const PDF_KLASORU = 'pdfler';
+  const KILIT_DOSYA = 'talepler.kilit';
+
+  // Bir kilit bu süre boyunca hiç değişmediyse sahibi ölmüş sayılır.
+  const KILIT_OMRU = 15000;
+  // Kilidi yazdıktan sonra "gerçekten bizde mi" diye bakmadan önceki bekleme.
+  const DOGRULAMA_BEKLEMESI = 150;
+
+  const benimKimligim =
+    (crypto.randomUUID?.() ?? String(Math.random())) + '-' + Date.now().toString(36);
 
   let idb = null;
 
@@ -166,33 +175,90 @@ TT.depo = (() => {
     await idbSil('dosya', (altKlasor ? altKlasor + '/' : '') + ad);
   }
 
+  /** Dosyanın "değişti mi" damgası: boyut + son değiştirilme. Yoksa null. */
+  async function dosyaDamgasi(ad = DB_DOSYA) {
+    if (durum.kip !== 'klasor') return null;
+    try {
+      const dosya = await (await durum.klasor.getFileHandle(ad)).getFile();
+      return { boyut: dosya.size, zaman: dosya.lastModified };
+    } catch (e) {
+      if (e.name === 'NotFoundError') return null;
+      throw e;
+    }
+  }
+
+  const damgaAyni = (a, b) => Boolean(a && b && a.boyut === b.boyut && a.zaman === b.zaman);
+
+  // ——— paylaşımlı klasör kilidi ———
+  //
+  // Klasör birden çok kişiyle paylaşılıyorsa iki kişi aynı anda yazdığında biri
+  // diğerinin değişikliğini eziyor. File System Access API'de "varsa oluşturma"
+  // gibi atomik bir işlem yok; bu yüzden klasik iddia-doğrula yöntemi:
+  // kilidi yazıp kısa bir süre bekliyoruz, sonra tekrar okuyup hâlâ bizde mi diye
+  // bakıyoruz. Biri araya girdiyse kaybediyor ve yeniden deniyoruz.
+  //
+  // Kilit yalnızca oku-değiştir-yaz üçlüsü boyunca (birkaç on milisaniye) tutulur.
+  // Bayatlık ölçüsü kilit dosyasının *değişmemesi*: makinelerin saatleri farklı
+  // olabildiği için karşı tarafın damgasıyla kendi saatimizi kıyaslamıyoruz.
+
+  const bekle = (ms) => new Promise((c) => setTimeout(c, ms));
+  let gorulenKilit = null;   // { imza, ilkGorulme }
+
+  async function kilidiOku() {
+    const bayt = await dosyaOku(KILIT_DOSYA);
+    if (!bayt?.length) return null;
+    try {
+      const veri = JSON.parse(new TextDecoder().decode(bayt));
+      const damga = await dosyaDamgasi(KILIT_DOSYA);
+      return { sahip: veri.sahip, imza: `${veri.sahip}|${damga?.zaman ?? 0}|${damga?.boyut ?? 0}` };
+    } catch {
+      return null;
+    }
+  }
+
+  const kilidiYaz = () =>
+    dosyaYaz(KILIT_DOSYA, new TextEncoder().encode(JSON.stringify({ sahip: benimKimligim })));
+
+  /** Kilidin bir süredir hiç kıpırdamadığını (sahibi gitmiş) tespit eder. */
+  function bayatMi(kilit) {
+    if (!gorulenKilit || gorulenKilit.imza !== kilit.imza) {
+      gorulenKilit = { imza: kilit.imza, ilkGorulme: Date.now() };
+      return false;
+    }
+    return Date.now() - gorulenKilit.ilkGorulme > KILIT_OMRU;
+  }
+
+  /**
+   * Yazma kilidini alır; bırakma işlevini döner.
+   * Tek kullanıcılı kiplerde (tarayıcı belleği) hiçbir şey yapmaz.
+   */
+  async function kilitAl({ enFazlaBekleme = 20000 } = {}) {
+    if (durum.kip !== 'klasor') return async () => {};
+    const bitis = Date.now() + enFazlaBekleme;
+    for (;;) {
+      const kilit = await kilidiOku();
+      if (!kilit || kilit.sahip === benimKimligim || bayatMi(kilit)) {
+        await kilidiYaz();
+        await bekle(DOGRULAMA_BEKLEMESI);
+        const dogrulama = await kilidiOku();
+        if (dogrulama?.sahip === benimKimligim) {
+          gorulenKilit = null;
+          return async () => { await dosyaSil(KILIT_DOSYA).catch(() => {}); };
+        }
+      }
+      if (Date.now() > bitis) {
+        throw new Error(
+          'Dosya şu an başka bir kullanıcıda; kilit bırakılmadı. Birkaç saniye sonra tekrar deneyin.'
+        );
+      }
+      await bekle(200 + Math.random() * 400); // çakışmayı dağıtmak için rastgele bekleme
+    }
+  }
+
   // ——— veritabanı dosyası ———
 
   const veritabaniniOku = () => dosyaOku(DB_DOSYA);
-
-  let yazmaZamani = null;
-  let bekleyenBayt = null;
-
-  /** Veritabanını diske yazar. Arka arkaya çağrılırsa son hâli bir kez yazılır. */
-  function veritabaniniYaz(bayt, { hemen = false } = {}) {
-    bekleyenBayt = bayt;
-    if (hemen) {
-      clearTimeout(yazmaZamani);
-      yazmaZamani = null;
-      const y = bekleyenBayt;
-      bekleyenBayt = null;
-      return dosyaYaz(DB_DOSYA, y);
-    }
-    if (yazmaZamani) return Promise.resolve();
-    return new Promise((tamam, hata) => {
-      yazmaZamani = setTimeout(() => {
-        yazmaZamani = null;
-        const y = bekleyenBayt;
-        bekleyenBayt = null;
-        dosyaYaz(DB_DOSYA, y).then(tamam, hata);
-      }, 400);
-    });
-  }
+  const veritabaniniYaz = (bayt) => dosyaYaz(DB_DOSYA, bayt);
 
   // ——— PDF arşivi ———
 
@@ -220,6 +286,9 @@ TT.depo = (() => {
     klasorDesteklenirMi,
     veritabaniniOku,
     veritabaniniYaz,
+    dosyaDamgasi,
+    damgaAyni,
+    kilitAl,
     pdfYaz,
     pdfOku,
     pdfSil,

@@ -48,13 +48,81 @@ TT.uygulama = (() => {
       .replace(/^\.+/, '')
       .slice(0, 100) || 'talep';
 
-  /** Veritabanını diske yaz. */
-  async function kaydet({ hemen = false } = {}) {
+  // ——— paylaşımlı klasörde yazma ———
+  //
+  // Klasör birkaç kişiyle paylaşıldığında herkesin belleğindeki kopya bağımsız
+  // ilerliyor ve son yazan diğerlerinin işini siliyordu. Artık her değişiklik
+  // kısa bir işlem: kilidi al → diskteki dosya değiştiyse yeniden yükle →
+  // değişikliği uygula → yaz → kilidi bırak. İşlemler ayrıca kendi sekmemizde
+  // sıraya girer, böylece iki tıklama birbirine karışmaz.
+
+  let damga = null;      // en son okuduğumuz talepler.db dosyasının damgası
+  let sira = Promise.resolve();
+
+  function islem(fn) {
+    const calistir = () => islemiYurut(fn);
+    sira = sira.then(calistir, calistir);
+    return sira;
+  }
+
+  async function islemiYurut(fn) {
+    const birak = await TT.depo.kilitAl();
     try {
-      await TT.depo.veritabaniniYaz(db.disaAktar(), { hemen });
-    } catch (e) {
-      bildir('Diske yazılamadı: ' + e.message, 'kotu');
+      await diskiTazele();
+      const sonuc = await fn(db);
+      await TT.depo.veritabaniniYaz(db.disaAktar());
+      damga = await TT.depo.dosyaDamgasi();
+      return sonuc;
+    } finally {
+      await birak();
     }
+  }
+
+  /** Diskteki dosya bizden yeniyse belleğe yeniden yükler. */
+  async function diskiTazele() {
+    if (TT.depo.durum.kip !== 'klasor') return false;
+    let yeniDamga;
+    try {
+      yeniDamga = await TT.depo.dosyaDamgasi();
+    } catch {
+      return false;
+    }
+    if (!yeniDamga || TT.depo.damgaAyni(yeniDamga, damga)) {
+      damga ??= yeniDamga;
+      return false;
+    }
+    try {
+      const bayt = await TT.depo.veritabaniniOku();
+      if (!bayt?.length) return false;
+      const yeni = await TT.Veritabani.ac(bayt);
+      db?.kapat();
+      db = yeni;
+      damga = yeniDamga;
+      return true;
+    } catch {
+      return false; // yazma anına denk gelmiş olabiliriz; sonraki turda tekrar deneriz
+    }
+  }
+
+  /** Ekranda düzenleme sürüyorsa listeyi altından çekmeyelim. */
+  function ekranMesgulMu() {
+    return (
+      $('#onizlemeOrtu').classList.contains('acik') ||
+      $('#yiginOrtu').classList.contains('acik') ||
+      $('#calisiyor').classList.contains('acik') ||
+      document.activeElement?.isContentEditable === true
+    );
+  }
+
+  /** Başkası yazdıysa listeyi tazeler. */
+  async function baskasiniKontrolEt() {
+    if (TT.depo.durum.kip !== 'klasor' || document.hidden || ekranMesgulMu()) return;
+    try {
+      if (await diskiTazele()) {
+        await yenile();
+        bildir('Liste yenilendi — klasördeki veritabanını başkası güncellemiş.');
+      }
+    } catch { /* geçici okuma hatası; sonraki turda tekrar denenir */ }
   }
 
   const pencereAc = (secici, acik) => $(secici).classList.toggle('acik', acik);
@@ -116,8 +184,9 @@ TT.uygulama = (() => {
           return;
         }
         db = await TT.Veritabani.ac(mevcut);
+        damga = await TT.depo.dosyaDamgasi();
       } else {
-        await kaydet({ hemen: true });
+        await islem(() => {});
       }
       depoSeridiCiz();
       await yenile();
@@ -278,27 +347,31 @@ TT.uygulama = (() => {
   // ——— PDF okuma ———
 
   /** Tek bir PDF'i okuyup ayrıştırır; kaydetmez. */
-  async function pdfCoz(ad, bayt, ocrZorla, gorulenOzetler) {
+  async function pdfCoz(ad, bayt, ocrZorla, gorulen) {
     if (new TextDecoder().decode(bayt.subarray(0, 5)) !== '%PDF-') {
       throw new Error('Bu bir PDF dosyası değil.');
     }
     const ozet = await ozetle(bayt);
     const sonuc = await TT.pdf.pdfOku(bayt, { ocrZorla, bildir: (m) => calisiyor(true, m) });
     const cikti = TT.ayristirici.ayristir(sonuc.sayfalar);
-    const kayitli = db.pdfVarMi(ozet);
-    return {
-      ...cikti,
-      ozet,
-      ad,
-      bayt,
-      kaynak: sonuc.kaynak,
-      sayfaSayisi: sonuc.sayfalar.length,
-      uyari: sonuc.uyari,
-      zatenVar: kayitli
-        ? `Bu PDF daha önce "${kayitli.talep_no}" talebi olarak kaydedilmiş.`
-        : gorulenOzetler?.has(ozet)
+    const temel = { ...cikti, ozet, ad, bayt, kaynak: sonuc.kaynak, sayfaSayisi: sonuc.sayfalar.length, uyari: sonuc.uyari };
+
+    // Kayıtlı olanlarla ve aynı yığındaki diğer dosyalarla çakışma
+    const cakisma = cakismayiBul(temel);
+    const talepNo = temel.baslik.talepNo;
+    const yiginCakismasi =
+      !cakisma && gorulen
+        ? gorulen.ozetler.has(ozet)
           ? 'Bu dosya seçtiklerinizin arasında zaten var.'
-          : null,
+          : talepNo && gorulen.talepNolar.has(talepNo)
+            ? `${talepNo} numaralı talep bu seçimde birden fazla dosyada var.`
+            : null
+        : null;
+
+    return {
+      ...temel,
+      zatenVar: cakisma?.mesaj ?? yiginCakismasi ?? null,
+      cakismaTalepId: cakisma?.talep.id ?? null,
     };
   }
 
@@ -309,15 +382,18 @@ TT.uygulama = (() => {
 
     calisiyor(true, `0/${dosyalar.length} PDF okundu…`);
     yigin = [];
-    const gorulen = new Set();
+    const gorulen = { ozetler: new Set(), talepNolar: new Set() };
     try {
+      // Başkası bu arada eklemiş olabilir; kopya kontrolünden önce diski tazele.
+      await diskiTazele().catch(() => {});
       for (const [i, dosya] of dosyalar.entries()) {
         const ad = guvenliAd(dosya.name);
         calisiyor(true, `${i}/${dosyalar.length} PDF okundu — ${dosya.name}`);
         try {
           const bayt = new Uint8Array(await dosya.arrayBuffer());
           const c = await pdfCoz(ad, bayt, false, gorulen);
-          gorulen.add(c.ozet);
+          gorulen.ozetler.add(c.ozet);
+          if (!c.zatenVar && c.baslik.talepNo) gorulen.talepNolar.add(c.baslik.talepNo);
           yigin.push({ ...c, secili: !c.zatenVar && c.kalemler.length > 0 });
         } catch (e) {
           yigin.push({ ad, hata: e.message, kalemler: [], secili: false, baslik: {} });
@@ -335,6 +411,7 @@ TT.uygulama = (() => {
     try {
       const ad = guvenliAd(dosya.ad ?? dosya.name);
       const bayt = dosya.bayt ?? new Uint8Array(await dosya.arrayBuffer());
+      await diskiTazele().catch(() => {}); // başkası eklemiş olabilir
       const c = await pdfCoz(ad, bayt, ocrZorla);
       sonDosya = { ad, bayt };
       onizlemeAc(c, cozumYiginIndeksi);
@@ -395,7 +472,6 @@ TT.uygulama = (() => {
           hatalar.push(`${y.ad}: ${e.message}`);
         }
       }
-      await kaydet({ hemen: true });
       pencereAc('#yiginOrtu', false);
       yigin = [];
       bildir(`${form} form, ${kalem} kalem kaydedildi.`, 'iyi');
@@ -406,22 +482,54 @@ TT.uygulama = (() => {
     }
   }
 
-  /** Bir ayrıştırma sonucunu veritabanına ve PDF arşivine yazar. */
-  async function taleplKaydet(c) {
+  /**
+   * Bir ayrıştırma sonucunu veritabanına ve PDF arşivine yazar.
+   * Talep no ve PDF kopya kontrolü kilit *içinde* tekrar yapılır: paylaşımlı
+   * klasörde biz PDF'i okurken başkası aynı talebi eklemiş olabilir.
+   */
+  async function taleplKaydet(c, { oncekiniSil = false } = {}) {
     const talepNo = c.baslik.talepNo || '(no yok)';
     const dosyaAdi = `${guvenliAd(talepNo)}_${c.ozet.slice(0, 8)}.pdf`;
-    await TT.depo.pdfYaz(dosyaAdi, c.bayt);
-    return db.talepEkle({
-      baslik: { ...c.baslik, talepNo },
-      kalemler: c.kalemler.map((k) => ({ ...k, nereden: k.nereden || c.baslik.nereden })),
-      pdf: {
-        dosya: dosyaAdi,
-        ozet: c.ozet,
-        ad: c.ad,
-        kaynak: c.kaynak,
-        sayfaSayisi: c.sayfaSayisi,
-      },
+    let silinecekPdf = null;
+
+    const sonuc = await islem(async () => {
+      const cakisma = cakismayiBul(c, talepNo);
+      if (cakisma && !oncekiniSil) throw new Error(cakisma.mesaj);
+      if (cakisma && oncekiniSil) {
+        const eski = db.talepSil(cakisma.talep.id);
+        if (eski?.pdf_dosya && eski.pdf_dosya !== dosyaAdi) silinecekPdf = eski.pdf_dosya;
+      }
+      await TT.depo.pdfYaz(dosyaAdi, c.bayt);
+      return db.talepEkle({
+        baslik: { ...c.baslik, talepNo },
+        kalemler: c.kalemler.map((k) => ({ ...k, nereden: k.nereden || c.baslik.nereden })),
+        pdf: { dosya: dosyaAdi, ozet: c.ozet, ad: c.ad, kaynak: c.kaynak, sayfaSayisi: c.sayfaSayisi },
+      });
     });
+
+    if (silinecekPdf) await TT.depo.pdfSil(silinecekPdf).catch(() => {});
+    return sonuc;
+  }
+
+  /** Bu talep zaten kayıtlı mı? Aynı PDF ya da aynı talep no. */
+  function cakismayiBul(c, talepNo = c.baslik.talepNo) {
+    const ayniPdf = c.ozet && db.pdfVarMi(c.ozet);
+    if (ayniPdf) {
+      return {
+        talep: ayniPdf,
+        mesaj: `Bu PDF daha önce "${ayniPdf.talep_no}" talebi olarak kaydedilmiş.`,
+      };
+    }
+    const ayniNo = talepNo && db.talepNoVarMi(talepNo);
+    if (ayniNo) {
+      return {
+        talep: ayniNo,
+        mesaj:
+          `${ayniNo.talep_no} numaralı talep zaten kayıtlı, aynı numarayı ikinci kez ekleyemiyorum. ` +
+          `İsterseniz öncekini silip bunu yeniden yükleyin.`,
+      };
+    }
+    return null;
   }
 
   // ——— tekli onay penceresi ———
@@ -445,6 +553,8 @@ TT.uygulama = (() => {
     const kopya = Boolean(sonuc.zatenVar) && yiginIndeksi === null;
     $('#onayla').disabled = kopya;
     $('#onayla').textContent = kopya ? 'Zaten kayıtlı' : yiginIndeksi === null ? 'Kaydet' : 'Tamam';
+    // Kayıtlı bir talebin yerine koymak isteyen için kısayol.
+    $('#oncekiniSil').hidden = !(kopya && sonuc.cakismaTalepId);
 
     $('#bTalepNo').value = sonuc.baslik.talepNo || '';
     $('#bNereden').value = sonuc.baslik.nereden || '';
@@ -491,7 +601,7 @@ TT.uygulama = (() => {
     };
   }
 
-  async function onayla() {
+  async function onayla({ oncekiniSil = false } = {}) {
     const baslik = baslikAlanlariniAl();
     if (!baslik.talepNo) return bildir('Talep no boş olamaz.', 'kotu');
     if (!cozum.kalemler.length) return bildir('Kaydedilecek kalem yok.', 'kotu');
@@ -509,8 +619,7 @@ TT.uygulama = (() => {
 
     calisiyor(true, 'Kaydediliyor…');
     try {
-      const sonuc = await taleplKaydet(cozum);
-      await kaydet({ hemen: true });
+      const sonuc = await taleplKaydet(cozum, { oncekiniSil });
       pencereAc('#onizlemeOrtu', false);
       bildir(`${sonuc.kalemSayisi} kalem kaydedildi.`, 'iyi');
       await yenile();
@@ -596,9 +705,11 @@ TT.uygulama = (() => {
         } else if (dugme.dataset.is === 'durum') {
           const satir = dugme.closest('tr');
           const yeni = dugme.classList.contains('etkin') ? 'bekliyor' : dugme.dataset.durum;
-          if (satir.classList.contains('grupBasi')) db.talepDurumu(talepId, yeni);
-          else db.kalemDurumu(Number(satir.dataset.id), yeni);
-          await kaydet();
+          const kalemId = Number(satir.dataset.id);
+          await islem(() => {
+            if (satir.classList.contains('grupBasi')) db.talepDurumu(talepId, yeni);
+            else db.kalemDurumu(kalemId, yeni);
+          });
           await yenile();
         } else if (dugme.dataset.is === 'pdf') {
           const talep = db.talep(talepId);
@@ -609,9 +720,8 @@ TT.uygulama = (() => {
           setTimeout(() => URL.revokeObjectURL(url), 60000);
         } else if (dugme.dataset.is === 'talepSil') {
           if (!confirm('Bu talep ve tüm kalemleri silinsin mi? PDF dosyası da silinir.')) return;
-          const talep = db.talepSil(talepId);
+          const talep = await islem(() => db.talepSil(talepId));
           if (talep?.pdf_dosya) await TT.depo.pdfSil(talep.pdf_dosya).catch(() => {});
-          await kaydet({ hemen: true });
           bildir('Talep silindi.', 'iyi');
           await yenile();
         }
@@ -629,9 +739,8 @@ TT.uygulama = (() => {
       const yeni = el.textContent.trim();
       if (!kalem || kalem[el.dataset.alan] === yeni) return;
       try {
-        db.kalemDuzenle(id, { [el.dataset.alan]: yeni });
+        await islem(() => db.kalemDuzenle(id, { [el.dataset.alan]: yeni }));
         kalem[el.dataset.alan] = yeni;
-        await kaydet();
         bildir('Güncellendi.', 'iyi');
       } catch (e) {
         bildir(e.message, 'kotu');
@@ -678,8 +787,11 @@ TT.uygulama = (() => {
       if (!dosya) return;
       if (!confirm('Mevcut veriler bu yedekle değiştirilecek. Devam edilsin mi?')) return;
       try {
-        db = await TT.Veritabani.ac(new Uint8Array(await dosya.arrayBuffer()));
-        await kaydet({ hemen: true });
+        const yedek = new Uint8Array(await dosya.arrayBuffer());
+        await islem(async () => {
+          db.kapat();
+          db = await TT.Veritabani.ac(yedek);
+        });
         await yenile();
         bildir('Yedek yüklendi.', 'iyi');
       } catch (e) {
@@ -765,7 +877,14 @@ TT.uygulama = (() => {
       if (sonDosya) pdfIsle(sonDosya, true);
     });
     $('#vazgec').addEventListener('click', onizlemeyiKapat);
-    $('#onayla').addEventListener('click', onayla);
+    $('#onayla').addEventListener('click', () => onayla());
+    $('#oncekiniSil').addEventListener('click', () => {
+      if (!confirm(
+        `${cozum.baslik.talepNo} numaralı kayıtlı talep ve tüm kalemleri silinip ` +
+        'yerine bu form yazılacak. Devam edilsin mi?'
+      )) return;
+      onayla({ oncekiniSil: true });
+    });
     $('#onizlemeOrtu').addEventListener('click', (o) => {
       if (o.target === $('#onizlemeOrtu')) onizlemeyiKapat();
     });
@@ -785,6 +904,10 @@ TT.uygulama = (() => {
       depoSeridiCiz();
       olaylariBagla();
       await yenile();
+
+      // Paylaşımlı klasörde başkasının eklediğini görebilmek için düzenli kontrol.
+      setInterval(baskasiniKontrolEt, 6000);
+      window.addEventListener('focus', baskasiniKontrolEt);
       window.TT_HAZIR = true;
     } catch (e) {
       console.error(e);

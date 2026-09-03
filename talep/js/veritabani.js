@@ -163,6 +163,14 @@ CREATE INDEX IF NOT EXISTS ix_kalem_kod   ON kalem(malzeme_kodu);
       return this.tek('SELECT id, talep_no, pdf_ad FROM talep WHERE pdf_ozet = ?', [ozet]);
     }
 
+    /** Bu talep no zaten kayıtlı mı? */
+    talepNoVarMi(talepNo) {
+      return this.tek(
+        'SELECT id, talep_no, pdf_ad, eklenme FROM talep WHERE talep_no = ? ORDER BY id LIMIT 1',
+        [String(talepNo ?? '').trim()]
+      );
+    }
+
     /** Bir talebi ve kalemlerini tek işlemde yazar. */
     talepEkle({ baslik, kalemler, pdf }) {
       this.calistir('BEGIN');
