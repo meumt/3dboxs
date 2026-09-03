@@ -33,6 +33,7 @@
 <script src="js/pdf-metin.js"></script>
 <script src="js/veritabani.js"></script>
 <script src="test/ornek.b64.js"></script>
+<script src="test/ornek2.b64.js"></script>
 
 <script>
 'use strict';
@@ -145,6 +146,51 @@ async function ornekFormTesti() {
   return { baslik, kalemler };
 }
 
+async function ikinciFormTesti() {
+  // İngilizce başlıklı, 13 kolonlu, başlığı iki satıra taşan form.
+  const bayt = TT.pdf.b64Ikili(window.ORNEK2_PDF_B64);
+  const { kaynak, sayfalar } = await TT.pdf.pdfOku(bayt);
+  esit(kaynak, 'metin', 'ikinci form: metin katmanından okunur');
+
+  const { baslik, kalemler, uyarilar } = A().ayristir(sayfalar);
+  esit(baslik.talepNo, '0028782', 'ikinci form: talep no ("Request form no:")');
+  esit(baslik.depoTanimi, 'ICE YEŞİLOVACIK', 'ikinci form: depo ("Warehouse Desc. :")');
+  esit(baslik.depoYeri, '4003', 'ikinci form: depo yeri ("Warehouse :")');
+  esit(baslik.nereden, 'ICE YEŞİLOVACIK (4003)', 'ikinci form: nereden');
+  esit(baslik.tarihSaat, '03.09.2026', 'ikinci form: tarih');
+  dogru(
+    uyarilar.some((u) => u.includes('Order No')),
+    'ikinci form: malzeme kodu kolonu olmadığı söylenir'
+  );
+  esit(kalemler.length, 1, 'ikinci form: 1 kalem');
+  esit(kalemler[0], {
+    sayfa: 1, sira: 10, metin: '', proje: 'AKU.0120.40UJA.0.KZ.LC0174',
+    poz: 'TA319-8', kod: 'EM-00689.23', aciklama: 'GÖMÜLÜ MALZEME',
+    miktar: '1', birim: 'ADT', miktarSayi: 1,
+  }, 'ikinci form: kalem birebir');
+}
+
+function baslikBloguTesti() {
+  // "Thickness / (mm)" gibi iki satıra taşan etiketler tek başlık sayılmalı.
+  const k = kelime;
+  const kelimeler = [
+    k('Thickness', 141, 178, 100, 7), k('Quality/', 185, 216, 100, 7),
+    k('No', 27, 38, 105, 7), k('Material', 53, 84, 105, 7), k('Description', 88, 130, 105, 7),
+    k('Quantity', 551, 584, 105, 7), k('Unit', 593, 609, 105, 7),
+    k('(mm)', 149, 170, 110, 7), k('Class', 191, 210, 110, 7),
+    // veri satırı
+    k('000010', 21, 42, 126, 7), k('GÖMÜLÜ', 49, 74, 126, 7),
+    k('8', 155, 160, 126, 7), k('S355', 190, 210, 126, 7),
+    k('1', 550, 554, 126, 7), k('ADT', 590, 602, 126, 7),
+  ];
+  const { kalemler } = A().ayristir([{ no: 1, genislik: 792, yukseklik: 612, kelimeler }]);
+  esit(kalemler.length, 1, 'başlık bloğu: veri satırı başlığa karışmaz');
+  esit(kalemler[0].aciklama, 'GÖMÜLÜ', 'başlık bloğu: açıklama kolonu doğru');
+  esit(kalemler[0].miktar, '1', 'başlık bloğu: miktar doğru');
+  esit(kalemler[0].metin, 'Kalınlık: 8 · Kalite: S355',
+    'başlık bloğu: taşan başlıklı ek kolonlar açıklamanın altına toplanır');
+}
+
 async function veritabaniTesti({ baslik, kalemler }) {
   const db = await TT.Veritabani.ac();
   const { talepId, kalemSayisi } = db.talepEkle({
@@ -152,7 +198,7 @@ async function veritabaniTesti({ baslik, kalemler }) {
     pdf: { dosya: 'x.pdf', ozet: 'ozet1', ad: 'x.pdf', kaynak: 'metin', sayfaSayisi: 1 },
   });
   esit(kalemSayisi, 13, 'veritabanı: 13 kalem yazılır');
-  esit(db.ozet(), { kalem: 13, tamamlanan: 0, bekleyen: 13, talep: 1 }, 'veritabanı: özet doğru');
+  esit(db.ozet(), { kalem: 13, onay: 0, red: 0, bekleyen: 13, talep: 1 }, 'veritabanı: özet doğru');
 
   for (const q of ['demir', 'DEMİR', 'İşlenmiş', 'tb0016', 'demir 4600']) {
     esit(db.kalemler({ arama: q }).length, 13, `arama: "${q}" 13 kalem bulur`);
@@ -163,20 +209,35 @@ async function veritabaniTesti({ baslik, kalemler }) {
   esit(db.pdfVarMi('baska'), null, 'kopya: farklı özet tanınmaz');
 
   const ilk = db.kalemler()[0];
-  db.kalemDurumu(ilk.id, true);
-  esit(db.ozet().tamamlanan, 1, 'tamamlama: tek kalem işaretlenir');
-  esit(db.kalemler({ durum: 'bekleyen' }).length, 12, 'tamamlama: bekleyen sayısı düşer');
-  dogru(db.kalem(ilk.id).tamamlanma_tarihi, 'tamamlama: tarih damgası konur');
+  db.kalemDurumu(ilk.id, 'onay');
+  esit(db.ozet().onay, 1, 'durum: tek kalem onaylanır');
+  esit(db.kalemler({ durum: 'bekleyen' }).length, 12, 'durum: bekleyen sayısı düşer');
+  dogru(db.kalem(ilk.id).durum_tarihi, 'durum: tarih damgası konur');
 
-  db.talepDurumu(talepId, true);
-  esit(db.ozet().bekleyen, 0, 'tamamlama: talebin tamamı işaretlenir');
-  db.talepDurumu(talepId, false);
-  esit(db.ozet().tamamlanan, 0, 'tamamlama: geri alınabilir');
+  db.kalemDurumu(ilk.id, 'red');
+  esit(db.ozet(), { kalem: 13, onay: 0, red: 1, bekleyen: 12, talep: 1 }, 'durum: onaydan redde geçer');
+  esit(db.kalemler({ durum: 'red' }).length, 1, 'durum: red filtresi');
+  esit(db.kalemler({ durum: 'onay' }).length, 0, 'durum: onay filtresi');
+
+  db.kalemDurumu(ilk.id, 'bekliyor');
+  esit(db.ozet().bekleyen, 13, 'durum: bekliyora geri döner');
+  esit(db.kalem(ilk.id).durum_tarihi, null, 'durum: bekliyorda tarih damgası silinir');
+
+  db.talepDurumu(talepId, 'onay');
+  esit(db.ozet().onay, 13, 'durum: talebin tamamı onaylanır');
+  db.talepDurumu(talepId, 'red');
+  esit(db.ozet().red, 13, 'durum: talebin tamamı reddedilir');
+  db.talepDurumu(talepId, 'bekliyor');
+  esit(db.ozet().bekleyen, 13, 'durum: talep geri alınabilir');
+
+  let gecersizYakalandi = false;
+  try { db.kalemDurumu(ilk.id, 'sacma'); } catch { gecersizYakalandi = true; }
+  dogru(gecersizYakalandi, 'durum: tanınmayan durum reddedilir');
 
   db.kalemDuzenle(ilk.id, { aciklama: 'PASLANMAZ BORU' });
   esit(db.kalemler({ arama: 'paslanmaz' }).length, 1, 'düzenleme: arama dizinine yansır');
-  db.kalemDuzenle(ilk.id, { tamamlandi: 1, talep_id: 999 });
-  esit(db.kalem(ilk.id).tamamlandi, 0, 'düzenleme: beyaz listede olmayan alan yazılmaz');
+  db.kalemDuzenle(ilk.id, { durum: 'onay', talep_id: 999 });
+  esit(db.kalem(ilk.id).durum, 'bekliyor', 'düzenleme: beyaz listede olmayan alan yazılmaz');
   esit(db.kalem(ilk.id).talep_id, talepId, 'düzenleme: talep_id değiştirilemez');
 
   // Dosyaya yazıp geri okuma — gerçek SQLite dosyası mı?
@@ -187,7 +248,7 @@ async function veritabaniTesti({ baslik, kalemler }) {
   db2.kapat();
 
   db.talepSil(talepId);
-  esit(db.ozet(), { kalem: 0, tamamlanan: 0, bekleyen: 0, talep: 0 }, 'silme: talep ve kalemleri gider');
+  esit(db.ozet(), { kalem: 0, onay: 0, red: 0, bekleyen: 0, talep: 0 }, 'silme: talep ve kalemleri gider');
   db.kapat();
 }
 
@@ -201,6 +262,8 @@ async function veritabaniTesti({ baslik, kalemler }) {
     hucreOnarimTesti();
     yapisikBirimTesti();
     const cozum = await ornekFormTesti();
+    await ikinciFormTesti();
+    baslikBloguTesti();
     await veritabaniTesti(cozum);
   } catch (e) {
     sonuclar.push({ ad: 'beklenmeyen hata', gecti: false, ayrinti: String(e && e.stack || e) });

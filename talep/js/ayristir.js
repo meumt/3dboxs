@@ -77,15 +77,16 @@ TT.ayristirici = (() => {
   // ——— Başlık alanları ———————————————————————————————————————————
 
   const ETIKETLER = [
-    { anahtar: 'talepEdenBirim', desen: /^talep eden birim\/? ?(tase?ron)?$/ },
-    { anahtar: 'talepEdenKullanici', desen: /^talep eden kullanici$/ },
-    { anahtar: 'talepTarihSaat', desen: /^talep tarih ?\/? ?saat$/ },
-    { anahtar: 'talepNo', desen: /^talep no$/ },
-    { anahtar: 'depoTanimi', desen: /^depo tanimi$/ },
-    { anahtar: 'depoYeri', desen: /^depo yeri$/ },
-    { anahtar: 'uretimYeri', desen: /^uretim yeri$/ },
-    { anahtar: 'tarih', desen: /^tarih$/ },
-    { anahtar: 'sayfa', desen: /^sayfa( no)?$/ },
+    { anahtar: 'talepEdenBirim', desen: /^(talep eden birim\/? ?(tase?ron)?|requesting company)$/ },
+    { anahtar: 'talepEdenKullanici', desen: /^(talep eden kullanici|requested by)$/ },
+    { anahtar: 'talepTarihSaat', desen: /^(talep tarih ?\/? ?saat|request date)$/ },
+    { anahtar: 'talepNo', desen: /^(talep no|request form no|request no|form no)$/ },
+    { anahtar: 'depoTanimi', desen: /^(depo tanimi|warehouse desc\.?|warehouse description)$/ },
+    { anahtar: 'depoYeri', desen: /^(depo yeri|warehouse|warehouse no)$/ },
+    { anahtar: 'uretimYeri', desen: /^(uretim yeri|production place)$/ },
+    { anahtar: 'faturaNo', desen: /^(fatura no|invoice no)$/ },
+    { anahtar: 'tarih', desen: /^(tarih|date)$/ },
+    { anahtar: 'sayfa', desen: /^(sayfa( no)?|page)$/ },
   ];
 
   /** "Etiket : değer" ikililerini, aynı satırda yan yana olsalar bile çıkarır. */
@@ -97,13 +98,22 @@ TT.ayristirici = (() => {
       for (let i = 0; i < k.length; i++) {
         for (let uzunluk = 4; uzunluk >= 1; uzunluk--) {
           if (i + uzunluk > k.length) continue;
-          const parca = sade(k.slice(i, i + uzunluk).map((w) => w.metin).join(' '));
-          const eslesme = ETIKETLER.find((e) => e.desen.test(parca));
-          if (eslesme) {
-            bulunanlar.push({ anahtar: eslesme.anahtar, bas: i, son: i + uzunluk - 1 });
-            i += uzunluk - 1;
-            break;
-          }
+          const ham = k.slice(i, i + uzunluk).map((w) => w.metin).join(' ');
+          // "Request form no:" gibi etiketlerde iki nokta son kelimeye yapışık geliyor.
+          const parca = sade(ham).replace(/\s*:$/, '');
+          if (!ETIKETLER.some((e) => e.desen.test(parca))) continue;
+          // Etiket sayılması için ardından iki nokta gelmeli. Yoksa
+          // "Warehouse Material Request Form" başlığı "Warehouse" etiketi sanılıyor.
+          const yapisik = /:\s*$/.test(ham);
+          const sonrakiIkiNokta = /^[:：]/.test(k[i + uzunluk]?.metin ?? '');
+          if (!yapisik && !sonrakiIkiNokta) continue;
+          bulunanlar.push({
+            anahtar: ETIKETLER.find((e) => e.desen.test(parca)).anahtar,
+            bas: i,
+            son: i + uzunluk - 1,
+          });
+          i += uzunluk - 1;
+          break;
         }
       }
       if (!bulunanlar.length) continue;
@@ -128,23 +138,42 @@ TT.ayristirici = (() => {
   // ——— Tablo ——————————————————————————————————————————————————————
 
   const KOLON_DESENLERI = [
-    { anahtar: 'sira', desen: /^(no|sira( ?no)?|s\.? ?no|kalem)$/ },
+    { anahtar: 'sira', desen: /^(no|no\.|sira( ?no)?|s\.? ?no|kalem|item no)$/ },
     { anahtar: 'metin', desen: /^(malzeme ?\/? ?talep metni|talep metni|malzeme metni)$/ },
-    { anahtar: 'proje', desen: /^(proje|proje kodu|is emri)$/ },
-    { anahtar: 'poz', desen: /^(poz|poz no)$/ },
-    { anahtar: 'kod', desen: /^(malzeme kodu|stok kodu|malzeme no|kod)$/ },
-    { anahtar: 'aciklama', desen: /^((sap )?malzeme tanimi|tanim|aciklama|malzeme adi)$/ },
-    { anahtar: 'miktar', desen: /^(miktar|adet)$/ },
-    { anahtar: 'birim', desen: /^(birim|olcu birimi|br)$/ },
+    { anahtar: 'proje', desen: /^(proje|proje kodu|is emri|project|project no|project drawing number|drawing number)$/ },
+    { anahtar: 'poz', desen: /^(poz|poz no|item ?\/? ?poz|item|position)$/ },
+    { anahtar: 'kod', desen: /^(malzeme kodu|stok kodu|malzeme no|kod|material code|stock code|part no|order no|siparis no)$/ },
+    { anahtar: 'aciklama', desen: /^((sap )?malzeme tanimi|tanim|aciklama|malzeme adi|material description|material desc\.?|description)$/ },
+    { anahtar: 'miktar', desen: /^(miktar|adet|quantity|qty)$/ },
+    { anahtar: 'birim', desen: /^(birim|olcu birimi|br|unit|uom)$/ },
+    // Aşağıdakiler altı ana kolona girmiyor; açıklamanın altına küçük punto ile iliştiriliyor.
+    { anahtar: 'kalinlik', desen: /^(kalinlik( \(mm\))?|thickness( \(mm\))?)$/ },
+    { anahtar: 'kalite', desen: /^(kalite ?\/? ?(sinif)?|quality ?\/? ?(class)?)$/ },
+    { anahtar: 'gost', desen: /^(gost no|gost)$/ },
+    { anahtar: 'tedarikci', desen: /^(tedarikci|supplier)$/ },
+    { anahtar: 'yer', desen: /^(yer|konum|location)$/ },
+    { anahtar: 'satirNotu', desen: /^(remarks|note|notes)$/ },
   ];
 
-  /** Tablo başlık satırından kolon sınırlarını çıkarır. */
-  function kolonlariCoz(satir) {
-    const obekler = obekle(satir.kelimeler, 12);
+  // "Order No" gerçek bir malzeme kodu değil; kod kolonu olarak o kullanıldığında
+  // kullanıcıya söylüyoruz.
+  const GERCEK_KOD = /^(malzeme kodu|stok kodu|malzeme no|kod|material code|stock code|part no)$/;
+
+  // Ana altı kolona girmeyen, açıklamanın altında toplanan kolonlar.
+  const EK_KOLONLAR = [
+    ['kalinlik', 'Kalınlık'],
+    ['kalite', 'Kalite'],
+    ['gost', 'Gost'],
+    ['tedarikci', 'Tedarikçi'],
+    ['yer', 'Yer'],
+    ['satirNotu', 'Not'],
+  ];
+
+  function obekleriKolonaCevir(obekler) {
     const kolonlar = obekler.map((o) => {
       const s = sade(o.metin);
       const eslesme = KOLON_DESENLERI.find((k) => k.desen.test(s));
-      return { anahtar: eslesme?.anahtar ?? null, etiket: o.metin, x0: o.x0, x1: o.x1 };
+      return { anahtar: eslesme?.anahtar ?? null, etiket: o.metin, sadeEtiket: s, x0: o.x0, x1: o.x1 };
     });
     for (let i = 0; i < kolonlar.length; i++) {
       kolonlar[i].sol = i === 0 ? -Infinity : (kolonlar[i - 1].x1 + kolonlar[i].x0) / 2;
@@ -152,6 +181,27 @@ TT.ayristirici = (() => {
         i === kolonlar.length - 1 ? Infinity : (kolonlar[i].x1 + kolonlar[i + 1].x0) / 2;
     }
     return kolonlar;
+  }
+
+  /**
+   * Tablo başlık satırından kolon sınırlarını çıkarır.
+   *
+   * Kaç puntoluk boşluğun "kolon arası" sayılacağı forma göre değişiyor: bir
+   * formda etiketler arasında 18 pt varken başka birinde 8 pt olabiliyor, üstelik
+   * "Material Description" gibi iki kelimelik etiketlerin arası da 2 pt. Sabit bir
+   * eşik ikisini birden tutturamıyor; bu yüzden birkaç eşik deneyip **en çok
+   * kolonu tanıyanı** seçiyoruz.
+   */
+  function kolonlariCoz(satir) {
+    const h = ortanca(satir.kelimeler.map((k) => k.h || 9)) || 9;
+    const adaylar = [h * 0.7, h * 1.2, 12, 20];
+    let enIyi = null;
+    for (const esik of adaylar) {
+      const kolonlar = obekleriKolonaCevir(obekle(satir.kelimeler, esik));
+      const tanidik = kolonlar.filter((k) => k.anahtar).length;
+      if (!enIyi || tanidik > enIyi.tanidik) enIyi = { kolonlar, tanidik };
+    }
+    return enIyi.kolonlar;
   }
 
   /** Satır tablo başlığı mı? Miktar + (kod veya tanım) + en az üç tanıdık etiket. */
@@ -163,7 +213,37 @@ TT.ayristirici = (() => {
       : null;
   }
 
-  const DIPNOT = /^(stok yonetimi|departman yoneticisi|teknik ofis|pto|imza|toplam|sayfa \d)/;
+  const DIPNOT =
+    /^(stok yonetimi|departman yoneticisi|teknik ofis|pto|imza|toplam|sayfa \d|not ?:|requesting|recivied|received|ic-industry|stamp by|name surname)/;
+
+  /**
+   * "Thickness / (mm)" gibi iki satıra taşan başlık etiketlerini toplamak için:
+   * bir satır, hiç rakam içermiyorsa ve başlığa yakınsa başlığın devamı sayılır.
+   * Rakam koşulu veri satırlarını dışarıda tutuyor — veri satırında sıra no,
+   * miktar ya da kod mutlaka rakam taşıyor.
+   */
+  function baslikDevamiOlabilirMi(satir) {
+    return satir.kelimeler.length > 0 && satir.kelimeler.every((k) => !/\d/.test(k.metin));
+  }
+
+  /** Başlık satırını, üstüne/altına taşmış etiket parçalarıyla birleştirir. */
+  function baslikBlogu(satirlar, indeks) {
+    const h = ortanca(satirlar[indeks].kelimeler.map((k) => k.h || 9)) || 9;
+    const esik = Math.max(6, h * 1.2);
+    let bas = indeks;
+    let son = indeks;
+    while (bas > 0 && satirlar[bas].y - satirlar[bas - 1].y <= esik && baslikDevamiOlabilirMi(satirlar[bas - 1])) bas--;
+    while (
+      son < satirlar.length - 1 &&
+      satirlar[son + 1].y - satirlar[son].y <= esik &&
+      baslikDevamiOlabilirMi(satirlar[son + 1])
+    ) son++;
+
+    const kelimeler = [];
+    for (let i = bas; i <= son; i++) kelimeler.push(...satirlar[i].kelimeler);
+    kelimeler.sort((a, b) => a.x0 - b.x0);
+    return { son, satir: { y: satirlar[indeks].y, kelimeler, metin: kelimeler.map((k) => k.metin).join(' ') } };
+  }
   const SAYI = /^[0-9][0-9.,]*$/;
   const BIRIM = /^[A-Za-zÇĞİÖŞÜçğıöşü]{1,6}\.?$/;
 
@@ -269,14 +349,19 @@ TT.ayristirici = (() => {
     const baslik = basligiOku(tumSatirlar);
     const kalemler = [];
     let sonKolonlar = null;
+    let kodEtiketi = null;   // malzeme kodu kolonu yoksa yerine kullanılan etiket
 
     for (const sayfa of sayfalar) {
       const sayfaSatirlari = satirlar(sayfa.kelimeler);
       let baslikIndeksi = -1;
       let kolonlar = null;
       for (let i = 0; i < sayfaSatirlari.length; i++) {
-        const bulunan = baslikSatiriMi(sayfaSatirlari[i]);
-        if (bulunan) { kolonlar = bulunan; baslikIndeksi = i; break; }
+        if (!baslikSatiriMi(sayfaSatirlari[i])) continue;
+        // Etiketler iki satıra taşmış olabilir; bloğu toplayıp öyle çözüyoruz.
+        const blok = baslikBlogu(sayfaSatirlari, i);
+        kolonlar = kolonlariCoz(blok.satir);
+        baslikIndeksi = blok.son;
+        break;
       }
       if (!kolonlar) {
         if (!sonKolonlar) continue;  // bu sayfada tablo yok
@@ -284,6 +369,8 @@ TT.ayristirici = (() => {
         baslikIndeksi = -1;
       }
       sonKolonlar = kolonlar;
+      const kodKolonu = kolonlar.find((k) => k.anahtar === 'kod');
+      if (kodKolonu && !GERCEK_KOD.test(kodKolonu.sadeEtiket)) kodEtiketi = kodKolonu.etiket;
 
       const siraKolonuVar = kolonlar.some((k) => k.anahtar === 'sira');
       let oncekiKalem = null;
@@ -303,10 +390,17 @@ TT.ayristirici = (() => {
           : Boolean(hucreMetni(hucreler.kod) || hucreMetni(hucreler.miktar));
 
         if (yeniKalem) {
+          // Ana altı kolona girmeyen alanlar (kalınlık, kalite, gost, tedarikçi…)
+          // kaybolmasın diye açıklamanın altındaki satıra toplanıyor.
+          const ekler = EK_KOLONLAR
+            .map(([anahtar, etiket]) => [etiket, hucreMetni(hucreler[anahtar])])
+            .filter(([, deger]) => deger)
+            .map(([etiket, deger]) => `${etiket}: ${deger}`);
+
           const kalem = {
             sayfa: sayfa.no,
             sira: siraHam ? Number(siraHam) : kalemler.length + 1,
-            metin: hucreMetni(hucreler.metin),
+            metin: [hucreMetni(hucreler.metin), ...ekler].filter(Boolean).join(' · '),
             proje: hucreMetni(hucreler.proje),
             poz: hucreMetni(hucreler.poz),
             kod: hucreMetni(hucreler.kod),
@@ -329,6 +423,11 @@ TT.ayristirici = (() => {
 
     if (!kalemler.length) {
       uyarilar.push('Tabloda kalem bulunamadı — kolon başlıkları tanınmadı olabilir.');
+    }
+    if (kodEtiketi) {
+      uyarilar.push(
+        `Bu formda ayrı bir malzeme kodu kolonu yok; MALZEME KODU olarak "${kodEtiketi}" kolonu alındı.`
+      );
     }
     for (const k of kalemler) {
       if (!k.kod) uyarilar.push(`Satır ${k.sira}: malzeme kodu okunamadı.`);

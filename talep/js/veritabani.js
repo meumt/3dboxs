@@ -44,15 +44,15 @@ CREATE TABLE IF NOT EXISTS kalem (
   miktar_sayi       REAL,
   birim             TEXT,
   nereden           TEXT,
-  tamamlandi        INTEGER NOT NULL DEFAULT 0,
-  tamamlanma_tarihi TEXT,
+  durum             TEXT NOT NULL DEFAULT 'bekliyor',   -- bekliyor | onay | red
+  durum_tarihi      TEXT,
   notlar            TEXT,
   arama_metni       TEXT
 );
 
 CREATE INDEX IF NOT EXISTS ix_kalem_talep ON kalem(talep_id);
 CREATE INDEX IF NOT EXISTS ix_kalem_no    ON kalem(talep_no);
-CREATE INDEX IF NOT EXISTS ix_kalem_durum ON kalem(tamamlandi);
+CREATE INDEX IF NOT EXISTS ix_kalem_durum ON kalem(durum);
 CREATE INDEX IF NOT EXISTS ix_kalem_kod   ON kalem(malzeme_kodu);
 `;
 
@@ -68,6 +68,8 @@ CREATE INDEX IF NOT EXISTS ix_kalem_kod   ON kalem(malzeme_kodu);
   const DUZENLENEBILIR = new Set([
     'proje', 'poz', 'malzeme_kodu', 'aciklama', 'metin', 'miktar', 'birim', 'nereden', 'notlar', 'sira',
   ]);
+
+  const DURUMLAR = new Set(['bekliyor', 'onay', 'red']);
 
   let SQL = null;
 
@@ -129,6 +131,22 @@ CREATE INDEX IF NOT EXISTS ix_kalem_kod   ON kalem(malzeme_kodu);
       const kolonlar = this.sorgu('PRAGMA table_info(kalem)').map((k) => k.name);
       if (!kolonlar.includes('arama_metni')) {
         this.calistir('ALTER TABLE kalem ADD COLUMN arama_metni TEXT');
+      }
+      // Eski sürümde tek bir "tamamlandı" kutusu vardı; artık onay/red/bekliyor.
+      if (!kolonlar.includes('durum')) {
+        this.calistir("ALTER TABLE kalem ADD COLUMN durum TEXT NOT NULL DEFAULT 'bekliyor'");
+        if (kolonlar.includes('tamamlandi')) {
+          this.calistir("UPDATE kalem SET durum = CASE WHEN tamamlandi = 1 THEN 'onay' ELSE 'bekliyor' END");
+        }
+      }
+      if (!kolonlar.includes('durum_tarihi')) {
+        this.calistir('ALTER TABLE kalem ADD COLUMN durum_tarihi TEXT');
+        if (kolonlar.includes('tamamlanma_tarihi')) {
+          this.calistir('UPDATE kalem SET durum_tarihi = tamamlanma_tarihi');
+        }
+      }
+      for (const eski of ['tamamlandi', 'tamamlanma_tarihi']) {
+        if (kolonlar.includes(eski)) this.calistir(`ALTER TABLE kalem DROP COLUMN ${eski}`);
       }
       for (const { id } of this.sorgu('SELECT id FROM kalem WHERE arama_metni IS NULL')) {
         this.calistir('UPDATE kalem SET arama_metni = ? WHERE id = ?', [
@@ -223,8 +241,9 @@ CREATE INDEX IF NOT EXISTS ix_kalem_kod   ON kalem(malzeme_kodu);
         kosullar.push('k.arama_metni LIKE ?');
         parametreler.push(`%${sade(kelime)}%`);
       }
-      if (durum === 'bekleyen') kosullar.push('k.tamamlandi = 0');
-      if (durum === 'tamamlanan') kosullar.push('k.tamamlandi = 1');
+      if (durum === 'bekleyen') kosullar.push("k.durum = 'bekliyor'");
+      if (durum === 'onay') kosullar.push("k.durum = 'onay'");
+      if (durum === 'red') kosullar.push("k.durum = 'red'");
       if (talepNo) { kosullar.push('k.talep_no = ?'); parametreler.push(talepNo); }
       if (proje) { kosullar.push('k.proje = ?'); parametreler.push(proje); }
       if (nereden) { kosullar.push('k.nereden = ?'); parametreler.push(nereden); }
@@ -244,14 +263,17 @@ CREATE INDEX IF NOT EXISTS ix_kalem_kod   ON kalem(malzeme_kodu);
     ozet() {
       const s = this.tek(
         `SELECT COUNT(*) AS kalem,
-                COALESCE(SUM(CASE WHEN tamamlandi=1 THEN 1 ELSE 0 END), 0) AS tamamlanan,
+                COALESCE(SUM(CASE WHEN durum='onay' THEN 1 ELSE 0 END), 0) AS onay,
+                COALESCE(SUM(CASE WHEN durum='red'  THEN 1 ELSE 0 END), 0) AS red,
                 COUNT(DISTINCT talep_no) AS talep
          FROM kalem`
       );
+      const kalem = s.kalem ?? 0;
       return {
-        kalem: s.kalem ?? 0,
-        tamamlanan: s.tamamlanan ?? 0,
-        bekleyen: (s.kalem ?? 0) - (s.tamamlanan ?? 0),
+        kalem,
+        onay: s.onay ?? 0,
+        red: s.red ?? 0,
+        bekleyen: kalem - (s.onay ?? 0) - (s.red ?? 0),
         talep: s.talep ?? 0,
       };
     }
@@ -263,22 +285,22 @@ CREATE INDEX IF NOT EXISTS ix_kalem_kod   ON kalem(malzeme_kodu);
       return { talepNo: kolon('talep_no'), proje: kolon('proje'), nereden: kolon('nereden') };
     }
 
-    kalemDurumu(id, tamamlandi) {
-      this.calistir(
-        `UPDATE kalem SET tamamlandi = ?,
-                          tamamlanma_tarihi = CASE WHEN ? = 1 THEN datetime('now','localtime') ELSE NULL END
-         WHERE id = ?`,
-        [tamamlandi ? 1 : 0, tamamlandi ? 1 : 0, id]
-      );
+    kalemDurumu(id, durum) {
+      this.durumYaz('id = ?', durum, [id]);
       return this.kalem(id);
     }
 
-    talepDurumu(talepId, tamamlandi) {
+    talepDurumu(talepId, durum) {
+      this.durumYaz('talep_id = ?', durum, [talepId]);
+    }
+
+    durumYaz(nerede, durum, parametreler) {
+      if (!DURUMLAR.has(durum)) throw new Error(`Geçersiz durum: ${durum}`);
       this.calistir(
-        `UPDATE kalem SET tamamlandi = ?,
-                          tamamlanma_tarihi = CASE WHEN ? = 1 THEN datetime('now','localtime') ELSE NULL END
-         WHERE talep_id = ?`,
-        [tamamlandi ? 1 : 0, tamamlandi ? 1 : 0, talepId]
+        `UPDATE kalem SET durum = ?,
+                          durum_tarihi = CASE WHEN ? = 'bekliyor' THEN NULL ELSE datetime('now','localtime') END
+         WHERE ${nerede}`,
+        [durum, durum, ...parametreler]
       );
     }
 

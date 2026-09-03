@@ -1,7 +1,7 @@
 # Talep Takip
 
-Ambardan malzeme talep formu PDF'lerini okuyup tabloya çeviren, tamamlanma
-durumunu takip eden sistem. **Kurulum yok, sunucu yok, Node yok** — `index.html`
+Ambardan malzeme talep formu PDF'lerini okuyup tabloya çeviren, her kalemi
+onaylayıp reddedebildiğiniz sistem. **Kurulum yok, sunucu yok, Node yok** — `index.html`
 dosyasına çift tıklayın, açılır.
 
 ```
@@ -28,15 +28,34 @@ yayınlayabilirsiniz — ama gerekmiyor.
 
 ## Kullanım
 
+### Tek PDF
+
 1. **PDF yükle**'ye basın ya da PDF'i sayfaya sürükleyin.
 2. Açılan **onay ekranında** okunan satırları kontrol edin. Her hücre
    düzenlenebilir; satır silebilir, satır ekleyebilirsiniz. Talep no ve
    *nereden* (ambar) alanları üstteki kutulardan düzeltilir.
 3. **Kaydet**'e basın — kalemler veritabanına yazılır, PDF `pdfler/` klasörüne
    kopyalanır.
-4. Listede her kalemin solundaki kutucukla **tamamlandı** işaretlenir. Talep
-   başlığındaki kutucuk o talebin **tüm kalemlerini** birden işaretler; yanındaki
-   çubuk kaçının bittiğini gösterir.
+
+### Toplu ekleme
+
+Onlarca PDF'i birden sürükleyin (ya da dosya seçicide hepsini seçin). Hepsi
+sırayla okunur, sonunda tek bir **özet listesi** açılır: hangi dosya, hangi talep
+no, kaç kalem, metin katmanından mı OCR'dan mı okundu, bir sorun var mı.
+
+- Daha önce kaydedilmiş bir PDF **Kopya** olarak işaretlenir ve seçili gelmez.
+- Okunamayan dosya sebebiyle birlikte listelenir, kaydedilmez.
+- Bir formu tek tek gözden geçirmek isterseniz satırındaki **Düzenle** ile onay
+  ekranını açar, düzeltip listeye dönersiniz.
+- **Kaydet** yalnız işaretli formları yazar.
+
+### Onay ve red
+
+Her kalemin solunda iki buton var: **✓ onayla**, **✕ reddet**. Etkin butona
+tekrar basmak kalemi *bekliyor*a döndürür. Talep başlığındaki aynı ikili o
+talebin **tüm kalemlerini** birden işaretler; yanındaki çubukta yeşil onay,
+kırmızı red payı görünür. Üst şeritteki sayaçlar bekleyen / onaylanan /
+reddedilen toplamlarını gösterir, filtre kutusundan da bunlara göre süzebilirsiniz.
 
 Listedeki proje, malzeme kodu, açıklama ve nereden hücreleri de yerinde
 düzenlenebilir — hücreye tıklayıp yazın, `Enter`'a basın.
@@ -46,8 +65,8 @@ Arama kutusu Türkçe büyük/küçük harf ve `ı/i`, `ş/s`, `ğ/g` farkını 
 hepsini birden içeren kalemler listelenir.
 
 **CSV indir** o anki filtreye uyan satırları Excel'in doğrudan açabileceği
-biçimde verir (UTF-8 BOM + noktalı virgül ayraç). **Yedek al** ise veritabanının
-o anki kopyasını indirir.
+biçimde verir (UTF-8 BOM + noktalı virgül ayraç); durum kolonu da içinde.
+**Yedek al** ise veritabanının o anki kopyasını indirir.
 
 ## Tablo kolonları
 
@@ -59,10 +78,26 @@ o anki kopyasını indirir.
 | AÇIKLAMA | *SAP Malzeme Tanımı*; altında küçük punto ile *Malzeme/Talep Metni* |
 | MİKTAR | *Miktar* + *Birim* |
 | NEREDEN | Formun üstündeki *Depo Tanımı* (ve *Depo Yeri*) |
-| DURUM | Sizin işaretlediğiniz tamamlanma bilgisi |
+| DURUM | Sizin verdiğiniz onay / red kararı |
 
 *Poz*, talep eden birim/kullanıcı ve talep tarihi de saklanır; CSV'ye ve talep
 başlığına yansır.
+
+### Desteklenen formlar
+
+İki form düzeni denenmiş durumda ve ikisi de tam çıkıyor:
+
+- **Türkçe SAP formu** — *IC İçtaş Nükleer Ambardan Malzeme Talep Formu*.
+- **İngilizce form** — *Warehouse Material Request Form*: 13 kolon, başlık
+  etiketlerinin bir kısmı iki satıra taşıyor (*Thickness / (mm)*).
+
+Kolon adları hem Türkçe hem İngilizce tanınıyor. İkinci formda ayrı bir malzeme
+kodu kolonu yok; MALZEME KODU olarak *Order No* alınıyor ve onay ekranında bu
+söyleniyor. Altı ana kolona girmeyen alanlar (kalınlık, kalite, gost, tedarikçi,
+yer, not) kaybolmuyor — açıklamanın altında küçük punto ile toplanıyor.
+
+Başka bir düzen gelirse ayrıştırıcı yine kolon başlıklarını arar; tanıyamazsa
+onay ekranında uyarır ve satırları elle düzeltirsiniz.
 
 ## OCR
 
@@ -101,8 +136,8 @@ talep/
 │   ├── depo.js                 klasöre / tarayıcı belleğine yazma
 │   ├── uygulama.js             arayüz ve akış
 │   └── kutuphane/              dış kütüphaneler (aşağıya bakın)
-├── ornek/ornek-talep.pdf       ayrıştırıcının doğrulandığı örnek form
-└── test/ornek.b64.js           aynı PDF, testlerin kullanması için gömülü
+├── ornek/                      ayrıştırıcının doğrulandığı iki örnek form
+└── test/                       aynı PDF'ler, testlerin kullanması için gömülü
 ```
 
 ### Kütüphaneler
@@ -132,12 +167,19 @@ Satır sırasına göre metin okumak tablolarda güvenilmez; onun yerine
    kaydıran yöntem OCR'ın gürültülü koordinatlarında satırları birbirine
    yapıştırıyordu; boşluk temelli kümeleme buna dayanıklı.
 3. `Miktar` ve `Malzeme Kodu` etiketlerini taşıyan satır **tablo başlığı** kabul
-   edilir; etiket öbeklerinin arasındaki orta noktalar kolon sınırı olur.
-4. Her kelime merkez `x`'ine göre bir kolona düşer.
-5. Hücreler tipine göre **onarılır**: miktar sayı olmalı, birim harf olmalı, sıra
+   edilir. Etiketler iki satıra taşmış olabileceği için (*Thickness* altında
+   *(mm)*) hemen üstteki ve alttaki rakamsız satırlar da başlığa katılır —
+   rakam koşulu veri satırlarını dışarıda tutuyor.
+4. Kelimelerin hangi boşlukta kolon değiştirdiği forma göre değişiyor: bir formda
+   etiket araları 18 pt, başkasında 8 pt, ama iki kelimelik etiketin kendi içi
+   2 pt. Sabit bir eşik ikisini tutturamadığı için birkaç eşik denenip **en çok
+   kolonu tanıyan** seçiliyor. Etiket öbeklerinin arasındaki orta noktalar kolon
+   sınırı olur.
+5. Her kelime merkez `x`'ine göre bir kolona düşer.
+6. Hücreler tipine göre **onarılır**: miktar sayı olmalı, birim harf olmalı, sıra
    no tek sayı olmalı. Sınıra oturan parçalar (örnek formda `B50` ile `55,820`
    arasındaki gibi) böylece doğru hücreye taşınır.
-6. Sıra no ile başlamayan satırlar, bir önceki kalemin devamı sayılır —
+7. Sıra no ile başlamayan satırlar, bir önceki kalemin devamı sayılır —
    açıklaması alt satıra taşan kalemler bölünmez.
 
 Kolon başlıkları tanınmazsa veya bir hücre okunamazsa onay ekranında sarı bir
@@ -145,9 +187,9 @@ uyarı çıkar; kayıt öncesi elle düzeltilir.
 
 ## Testler
 
-`test.html` dosyasına çift tıklayın. Örnek formun 13 kaleminin tamamının doğru
-okunduğunu, Türkçe aramanın çalıştığını, kolon sınırı onarımını ve veritabanı
-işlemlerini doğrular.
+`test.html` dosyasına çift tıklayın. İki örnek formun da eksiksiz okunduğunu,
+Türkçe aramayı, kolon sınırı onarımını, iki satıra taşan başlıkları, onay/red
+durumlarını ve veritabanı işlemlerini doğrular (72 test).
 
 ## Bilinen sınırlar
 

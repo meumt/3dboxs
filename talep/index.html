@@ -6,32 +6,26 @@
 <title>Talep Takip</title>
 <style>
   :root {
-    --zemin: #f6f7f9;
+    --zemin: #f3f5f8;
     --kart: #ffffff;
-    --kenar: #dfe3e8;
-    --yazi: #1c2128;
-    --soluk: #6b7481;
-    --vurgu: #1f6feb;
-    --vurgu-soluk: #e8f0fe;
-    --yesil: #1a7f37;
-    --yesil-soluk: #e6f4ea;
-    --kirmizi: #c1372c;
-    --kirmizi-soluk: #fdeceb;
-    --sari: #9a6700;
-    --sari-soluk: #fff8dd;
-    --golge: 0 1px 2px rgba(16, 22, 26, .06), 0 4px 16px rgba(16, 22, 26, .06);
+    --kenar: #e3e7ed;
+    --kenar-koyu: #cdd4dd;
+    --yazi: #1f2733;
+    --soluk: #66717f;
+    --vurgu: #2563eb;
+    --vurgu-soluk: #eaf1ff;
+    --yesil: #15803d;
+    --yesil-soluk: #e8f6ed;
+    --kirmizi: #c2352b;
+    --kirmizi-soluk: #fdeeec;
+    --sari: #8a5d0a;
+    --sari-soluk: #fdf4e0;
+    --golge: 0 1px 2px rgba(31, 39, 51, .05), 0 6px 20px rgba(31, 39, 51, .06);
     --yuvarlak: 10px;
   }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --zemin: #0f1319; --kart: #161b22; --kenar: #2a313c; --yazi: #e6edf3;
-      --soluk: #939da9; --vurgu: #4c8dff; --vurgu-soluk: #16253f;
-      --yesil: #4ac26b; --yesil-soluk: #12261a;
-      --kirmizi: #ff7b72; --kirmizi-soluk: #2b1614;
-      --sari: #d9a441; --sari-soluk: #2a2210;
-      --golge: 0 1px 2px rgba(0,0,0,.4), 0 4px 16px rgba(0,0,0,.3);
-    }
-  }
+  /* Tek tema: aydınlık. Sistem koyu kipteyken de bu renkler kullanılır. */
+  :root { color-scheme: light; }
+
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; }
   body {
@@ -59,6 +53,7 @@
   .sayac b { font-size: 14px; color: var(--yazi); font-variant-numeric: tabular-nums; }
   .sayac.bekleyen b { color: var(--sari); }
   .sayac.tamam b { color: var(--yesil); }
+  .sayac.red b { color: var(--kirmizi); }
   .bosluk { flex: 1; }
 
   .dugme {
@@ -144,8 +139,8 @@
   .grupIc { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
   .grupIc .no { font-weight: 600; font-size: 14px; font-family: ui-monospace, Consolas, monospace; }
   .grupIc .bilgi { color: var(--soluk); font-size: 12px; }
-  .cubuk { width: 120px; height: 6px; border-radius: 99px; background: var(--kenar); overflow: hidden; }
-  .cubuk i { display: block; height: 100%; background: var(--yesil); transition: width .2s; }
+  .cubuk { display: flex; width: 120px; height: 6px; border-radius: 99px; background: var(--kenar); overflow: hidden; }
+  .cubuk i { height: 100%; background: var(--yesil); transition: width .2s; }
 
   .rozet { display: inline-block; padding: 1px 7px; border-radius: 99px; font-size: 11px; font-weight: 500; white-space: nowrap; }
   .rozet.bekliyor { background: var(--sari-soluk); color: var(--sari); }
@@ -153,7 +148,27 @@
   .rozet.ocr { background: var(--sari-soluk); color: var(--sari); }
   .rozet.metin { background: var(--vurgu-soluk); color: var(--vurgu); }
 
-  input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--yesil); cursor: pointer; }
+  input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--vurgu); cursor: pointer; }
+
+  /* ——— onay / red butonları ——— */
+  .durumDugmeleri { display: inline-flex; gap: 4px; }
+  .durumDugme {
+    width: 26px; height: 26px; padding: 0; display: grid; place-items: center;
+    border: 1px solid var(--kenar-koyu); border-radius: 7px; background: var(--kart);
+    color: var(--soluk); font-size: 14px; line-height: 1; cursor: pointer;
+    transition: background .12s, border-color .12s, color .12s;
+  }
+  .durumDugme.onay:hover, .durumDugme.onay.etkin {
+    background: var(--yesil-soluk); border-color: var(--yesil); color: var(--yesil);
+  }
+  .durumDugme.red:hover, .durumDugme.red.etkin {
+    background: var(--kirmizi-soluk); border-color: var(--kirmizi); color: var(--kirmizi);
+  }
+  .durumDugme.etkin { font-weight: 700; }
+  tbody tr.satir-red td:not(.durumHucre) { color: var(--soluk); }
+  tbody tr.satir-red .aciklamaAna { text-decoration: line-through; }
+  .rozet.red { background: var(--kirmizi-soluk); color: var(--kirmizi); }
+  .cubuk i.red { background: var(--kirmizi); }
   .bos { padding: 48px 20px; text-align: center; color: var(--soluk); }
 
   /* ——— pencere ——— */
@@ -222,8 +237,9 @@
   <div id="depoSerit"></div>
 
   <div id="atmaAlani">
-    <b>PDF'i buraya sürükleyin</b> ya da <b>PDF yükle</b>'ye basın
-    <div class="ipucu">Talep formu okunur, satırlar tabloya çıkarılır; onayladıktan sonra PDF klasörde saklanır.</div>
+    <b>PDF'leri buraya sürükleyin</b> ya da <b>PDF yükle</b>'ye basın
+    <div class="ipucu">Tek tek ya da onlarca birden — hepsi okunur, satırlar tabloya çıkarılır;
+    onayladıktan sonra PDF'ler klasörde saklanır.</div>
   </div>
 
   <div class="filtreler">
@@ -231,7 +247,8 @@
     <select id="fDurum">
       <option value="hepsi">Tüm kalemler</option>
       <option value="bekleyen">Bekleyenler</option>
-      <option value="tamamlanan">Tamamlananlar</option>
+      <option value="onay">Onaylananlar</option>
+      <option value="red">Reddedilenler</option>
     </select>
     <select id="fTalep"><option value="">Tüm talepler</option></select>
     <select id="fProje"><option value="">Tüm projeler</option></select>
@@ -308,7 +325,45 @@
   </div>
 </div>
 
-<input type="file" id="dosyaSecici" accept="application/pdf,.pdf" hidden>
+<!-- ——— toplu yükleme özeti ——— -->
+<div class="ortu" id="yiginOrtu">
+  <div class="pencere">
+    <header>
+      <h2>Okunan formlar</h2>
+      <span id="yiginRozet" style="color:var(--soluk);font-size:13px"></span>
+      <div class="bosluk"></div>
+      <button class="dugme" id="yiginHepsi">Hepsini seç</button>
+      <button class="dugme" id="yiginHicbiri">Seçimi kaldır</button>
+    </header>
+    <div class="govde">
+      <div class="tabloKutu">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:34px"></th>
+              <th>Dosya</th>
+              <th>Talep No</th>
+              <th>Nereden</th>
+              <th style="text-align:right">Kalem</th>
+              <th>Kaynak</th>
+              <th>Durum</th>
+              <th style="width:80px"></th>
+            </tr>
+          </thead>
+          <tbody id="yiginGovde"></tbody>
+        </table>
+      </div>
+    </div>
+    <footer>
+      <span id="yiginOzet" style="color:var(--soluk);font-size:13px"></span>
+      <div class="bosluk"></div>
+      <button class="dugme" id="yiginVazgec">Vazgeç</button>
+      <button class="dugme ana" id="yiginKaydet">Kaydet</button>
+    </footer>
+  </div>
+</div>
+
+<input type="file" id="dosyaSecici" accept="application/pdf,.pdf" multiple hidden>
 <input type="file" id="yedekSecici" accept=".db,.sqlite,application/octet-stream" hidden>
 <div id="calisiyor"><div><div class="donen"></div><div id="calisiyorYazi">Okunuyor…</div></div></div>
 <div id="bildirimler"></div>
