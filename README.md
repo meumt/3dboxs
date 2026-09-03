@@ -7,6 +7,11 @@ durur ve kendi üzerindeki kesiklerle yazıyı tamamlar.
 Yazıyı ya da SVG logoyu ver, duvarda kaç santim olsun söyle — sistem maskeyi
 hesaplar, 3B gösterir, **STL** olarak verir.
 
+> **Bu depoda ayrı bir iş daha var:** [`talep/`](talep/) — ambardan malzeme
+> talep formu PDF'lerini OCR'layıp tabloya çeviren, tamamlanma durumunu takip
+> eden lokal sistem. Gölge kutu tasarımcısıyla ilgisi yok, kendi klasöründe
+> kendi başına çalışır.
+
 ![Duvar görünümü](docs/duvar.png)
 
 ---

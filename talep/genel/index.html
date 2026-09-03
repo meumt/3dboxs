@@ -1,0 +1,679 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Talep Takip</title>
+<style>
+  :root {
+    --zemin: #f6f7f9;
+    --kart: #ffffff;
+    --kenar: #dfe3e8;
+    --yazi: #1c2128;
+    --soluk: #6b7481;
+    --vurgu: #1f6feb;
+    --vurgu-soluk: #e8f0fe;
+    --yesil: #1a7f37;
+    --yesil-soluk: #e6f4ea;
+    --kirmizi: #c1372c;
+    --sari: #9a6700;
+    --sari-soluk: #fff8dd;
+    --golge: 0 1px 2px rgba(16, 22, 26, .06), 0 4px 16px rgba(16, 22, 26, .06);
+    --yuvarlak: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --zemin: #0f1319; --kart: #161b22; --kenar: #2a313c; --yazi: #e6edf3;
+      --soluk: #939da9; --vurgu: #4c8dff; --vurgu-soluk: #16253f;
+      --yesil: #4ac26b; --yesil-soluk: #12261a; --kirmizi: #ff7b72;
+      --sari: #d9a441; --sari-soluk: #2a2210;
+      --golge: 0 1px 2px rgba(0,0,0,.4), 0 4px 16px rgba(0,0,0,.3);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--zemin); color: var(--yazi);
+    font: 14px/1.45 "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  h1, h2, h3 { margin: 0; font-weight: 600; }
+
+  /* ——— üst şerit ——— */
+  header {
+    position: sticky; top: 0; z-index: 30;
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 12px 20px; background: var(--kart);
+    border-bottom: 1px solid var(--kenar);
+  }
+  header h1 { font-size: 16px; letter-spacing: .2px; }
+  header h1 span { color: var(--soluk); font-weight: 400; }
+  .sayaclar { display: flex; gap: 8px; flex-wrap: wrap; }
+  .sayac {
+    display: flex; align-items: baseline; gap: 6px;
+    padding: 4px 10px; border: 1px solid var(--kenar);
+    border-radius: 999px; background: var(--zemin); font-size: 12px; color: var(--soluk);
+  }
+  .sayac b { font-size: 14px; color: var(--yazi); font-variant-numeric: tabular-nums; }
+  .sayac.bekleyen b { color: var(--sari); }
+  .sayac.tamam b { color: var(--yesil); }
+  .bosluk { flex: 1; }
+
+  .dugme {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 13px; border: 1px solid var(--kenar); border-radius: 8px;
+    background: var(--kart); cursor: pointer; white-space: nowrap;
+    transition: background .12s, border-color .12s;
+  }
+  .dugme:hover { background: var(--zemin); border-color: var(--soluk); }
+  .dugme.ana { background: var(--vurgu); border-color: var(--vurgu); color: #fff; font-weight: 500; }
+  .dugme.ana:hover { filter: brightness(1.08); }
+  .dugme.tehlike:hover { color: var(--kirmizi); border-color: var(--kirmizi); }
+  .dugme:disabled { opacity: .5; cursor: not-allowed; }
+  .dugme.ufak { padding: 3px 8px; font-size: 12px; border-radius: 6px; }
+
+  main { padding: 18px 20px 60px; max-width: 1700px; margin: 0 auto; }
+
+  /* ——— yükleme alanı ——— */
+  #atmaAlani {
+    border: 2px dashed var(--kenar); border-radius: var(--yuvarlak);
+    padding: 22px; text-align: center; color: var(--soluk);
+    background: var(--kart); margin-bottom: 16px; transition: .15s;
+  }
+  #atmaAlani.uzerinde { border-color: var(--vurgu); background: var(--vurgu-soluk); color: var(--vurgu); }
+  #atmaAlani b { color: var(--yazi); }
+  #atmaAlani .ipucu { font-size: 12px; margin-top: 6px; }
+
+  /* ——— filtreler ——— */
+  .filtreler {
+    display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+    background: var(--kart); border: 1px solid var(--kenar);
+    border-radius: var(--yuvarlak); padding: 10px 12px; margin-bottom: 14px;
+  }
+  .filtreler input[type=search], .filtreler select {
+    padding: 6px 10px; border: 1px solid var(--kenar); border-radius: 8px;
+    background: var(--zemin); min-width: 140px;
+  }
+  .filtreler input[type=search] { min-width: 260px; flex: 1; }
+  .filtreler label.anahtar {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 13px;
+    color: var(--soluk); cursor: pointer; user-select: none;
+  }
+
+  /* ——— tablo ——— */
+  .tabloKutu {
+    background: var(--kart); border: 1px solid var(--kenar);
+    border-radius: var(--yuvarlak); overflow: auto; box-shadow: var(--golge);
+  }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  thead th {
+    position: sticky; top: 0; z-index: 5;
+    background: var(--kart); border-bottom: 2px solid var(--kenar);
+    padding: 9px 10px; text-align: left; font-size: 11px; letter-spacing: .6px;
+    text-transform: uppercase; color: var(--soluk); white-space: nowrap;
+  }
+  tbody td { padding: 7px 10px; border-bottom: 1px solid var(--kenar); vertical-align: top; }
+  tbody tr:hover { background: var(--zemin); }
+  tbody tr.bitti td:not(.durumHucre) { color: var(--soluk); }
+  tbody tr.bitti .aciklamaAna { text-decoration: line-through; }
+  td.sayi { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.kod, td.talepNo { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; white-space: nowrap; }
+  .altYazi { display: block; font-size: 11px; color: var(--soluk); margin-top: 2px; }
+  .duzenlenir { cursor: text; border-radius: 4px; padding: 1px 3px; margin: -1px -3px; }
+  .duzenlenir:focus { outline: 2px solid var(--vurgu); background: var(--kart); }
+
+  .grupBasi td {
+    background: var(--zemin); border-top: 2px solid var(--kenar);
+    position: sticky; top: 33px; z-index: 4;
+  }
+  .grupIc { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .grupIc .no { font-weight: 600; font-size: 14px; font-family: ui-monospace, Consolas, monospace; }
+  .grupIc .bilgi { color: var(--soluk); font-size: 12px; }
+  .cubuk { width: 120px; height: 6px; border-radius: 99px; background: var(--kenar); overflow: hidden; }
+  .cubuk i { display: block; height: 100%; background: var(--yesil); transition: width .2s; }
+
+  .rozet {
+    display: inline-block; padding: 1px 7px; border-radius: 99px;
+    font-size: 11px; font-weight: 500; white-space: nowrap;
+  }
+  .rozet.bekliyor { background: var(--sari-soluk); color: var(--sari); }
+  .rozet.tamam { background: var(--yesil-soluk); color: var(--yesil); }
+  .rozet.ocr { background: var(--sari-soluk); color: var(--sari); }
+  .rozet.metin { background: var(--vurgu-soluk); color: var(--vurgu); }
+
+  input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--yesil); cursor: pointer; }
+  .bos { padding: 48px 20px; text-align: center; color: var(--soluk); }
+
+  /* ——— pencere ——— */
+  .ortu {
+    position: fixed; inset: 0; z-index: 50; display: none;
+    background: rgba(10, 14, 20, .55); padding: 24px; overflow: auto;
+  }
+  .ortu.acik { display: block; }
+  .pencere {
+    background: var(--kart); border: 1px solid var(--kenar); border-radius: 14px;
+    max-width: 1400px; margin: 0 auto; box-shadow: 0 24px 64px rgba(0,0,0,.35);
+    display: flex; flex-direction: column; max-height: calc(100vh - 48px);
+  }
+  .pencere > header { border-radius: 14px 14px 0 0; position: static; }
+  .pencere .govde { padding: 16px 20px; overflow: auto; }
+  .pencere > footer {
+    display: flex; gap: 10px; align-items: center; justify-content: flex-end;
+    padding: 12px 20px; border-top: 1px solid var(--kenar);
+  }
+  .alanIzgara {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 10px; margin-bottom: 14px;
+  }
+  .alan { display: flex; flex-direction: column; gap: 3px; }
+  .alan span { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--soluk); }
+  .alan input {
+    padding: 6px 9px; border: 1px solid var(--kenar); border-radius: 8px; background: var(--zemin);
+  }
+  #onizlemeTablo td { padding: 4px 6px; }
+  #onizlemeTablo td[contenteditable] {
+    background: var(--zemin); border-radius: 5px; min-width: 40px;
+  }
+  #onizlemeTablo td[contenteditable]:focus { outline: 2px solid var(--vurgu); background: var(--kart); }
+
+  .uyariKutu {
+    background: var(--sari-soluk); color: var(--sari); border: 1px solid currentColor;
+    border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; font-size: 13px;
+  }
+  .uyariKutu ul { margin: 6px 0 0; padding-left: 18px; }
+
+  /* ——— bildirim ——— */
+  #bildirimler { position: fixed; right: 18px; bottom: 18px; z-index: 90; display: grid; gap: 8px; }
+  .bildirim {
+    background: var(--kart); border: 1px solid var(--kenar); border-left: 3px solid var(--vurgu);
+    border-radius: 8px; padding: 10px 14px; box-shadow: var(--golge); max-width: 380px;
+    animation: gir .18s ease-out;
+  }
+  .bildirim.iyi { border-left-color: var(--yesil); }
+  .bildirim.kotu { border-left-color: var(--kirmizi); }
+  @keyframes gir { from { opacity: 0; transform: translateY(6px); } }
+
+  #calisiyor {
+    position: fixed; inset: 0; z-index: 80; display: none;
+    background: rgba(10, 14, 20, .45); place-items: center; color: #fff;
+  }
+  #calisiyor.acik { display: grid; }
+  .donen {
+    width: 34px; height: 34px; border: 3px solid rgba(255,255,255,.25);
+    border-top-color: #fff; border-radius: 50%; animation: don .8s linear infinite;
+    margin: 0 auto 12px;
+  }
+  @keyframes don { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Talep Takip <span>· ambar malzeme talepleri</span></h1>
+  <div class="sayaclar" id="sayaclar"></div>
+  <div class="bosluk"></div>
+  <button class="dugme ana" id="yukleDugme">PDF yükle</button>
+  <button class="dugme" id="csvDugme">CSV indir</button>
+</header>
+
+<main>
+  <div id="atmaAlani">
+    <b>PDF'i buraya sürükleyin</b> ya da <b>PDF yükle</b>'ye basın
+    <div class="ipucu">Talep formu okunur, satırlar tabloya çıkarılır; onayladıktan sonra PDF bu klasörde saklanır.</div>
+  </div>
+
+  <div class="filtreler">
+    <input type="search" id="arama" placeholder="Ara: malzeme kodu, açıklama, proje, talep no…">
+    <select id="fDurum">
+      <option value="hepsi">Tüm kalemler</option>
+      <option value="bekleyen">Bekleyenler</option>
+      <option value="tamamlanan">Tamamlananlar</option>
+    </select>
+    <select id="fTalep"><option value="">Tüm talepler</option></select>
+    <select id="fProje"><option value="">Tüm projeler</option></select>
+    <select id="fNereden"><option value="">Tüm ambarlar</option></select>
+    <label class="anahtar"><input type="checkbox" id="grupla" checked> Taleplere göre grupla</label>
+  </div>
+
+  <div class="tabloKutu">
+    <table id="tablo">
+      <thead>
+        <tr>
+          <th style="width:34px"></th>
+          <th>Talep No</th>
+          <th>Proje</th>
+          <th>Malzeme Kodu</th>
+          <th>Açıklama</th>
+          <th style="text-align:right">Miktar</th>
+          <th>Nereden</th>
+          <th>Durum</th>
+          <th style="width:60px"></th>
+        </tr>
+      </thead>
+      <tbody id="govde"></tbody>
+    </table>
+    <div class="bos" id="bosMesaj" hidden>Henüz kayıt yok. Bir talep PDF'i yükleyerek başlayın.</div>
+  </div>
+</main>
+
+<!-- ——— önizleme / onay penceresi ——— -->
+<div class="ortu" id="onizlemeOrtu">
+  <div class="pencere">
+    <header>
+      <h2>Okunan talep <span id="kaynakRozet"></span></h2>
+      <div class="bosluk"></div>
+      <button class="dugme" id="ocrTekrar" title="Metin katmanını yok say, sayfayı görüntüden oku">OCR ile tekrar oku</button>
+      <button class="dugme" id="satirEkle">Satır ekle</button>
+    </header>
+    <div class="govde">
+      <div id="uyarilar"></div>
+      <div class="alanIzgara">
+        <label class="alan"><span>Talep no</span><input id="bTalepNo"></label>
+        <label class="alan"><span>Nereden (ambar)</span><input id="bNereden"></label>
+        <label class="alan"><span>Talep eden birim</span><input id="bBirim"></label>
+        <label class="alan"><span>Talep eden kullanıcı</span><input id="bKullanici"></label>
+        <label class="alan"><span>Talep tarihi</span><input id="bTarih"></label>
+        <label class="alan"><span>Not</span><input id="bNot" placeholder="isteğe bağlı"></label>
+      </div>
+      <div class="tabloKutu">
+        <table id="onizlemeTablo">
+          <thead>
+            <tr>
+              <th style="width:40px">#</th>
+              <th>Proje</th>
+              <th style="width:60px">Poz</th>
+              <th>Malzeme Kodu</th>
+              <th>Açıklama</th>
+              <th>Malzeme Metni</th>
+              <th style="width:90px">Miktar</th>
+              <th style="width:60px">Birim</th>
+              <th style="width:34px"></th>
+            </tr>
+          </thead>
+          <tbody id="onizlemeGovde"></tbody>
+        </table>
+      </div>
+    </div>
+    <footer>
+      <span id="onizlemeOzet" style="color:var(--soluk);font-size:13px"></span>
+      <div class="bosluk"></div>
+      <button class="dugme" id="vazgec">Vazgeç</button>
+      <button class="dugme ana" id="onayla">Kaydet</button>
+    </footer>
+  </div>
+</div>
+
+<input type="file" id="dosyaSecici" accept="application/pdf,.pdf" hidden>
+<div id="calisiyor"><div><div class="donen"></div><div id="calisiyorYazi">Okunuyor…</div></div></div>
+<div id="bildirimler"></div>
+
+<script>
+'use strict';
+
+const $ = (s) => document.querySelector(s);
+const kacir = (d) => String(d ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+let kalemler = [];
+let cozum = null;          // önizlemedeki ayrıştırma sonucu
+let sonDosya = null;       // OCR ile tekrar okumak için elimizde tutulan PDF
+
+// ——— altyapı —————————————————————————————————————————————————————
+
+async function api(yol, secenekler = {}) {
+  const yanit = await fetch(yol, secenekler);
+  const tur = yanit.headers.get('content-type') || '';
+  const veri = tur.includes('json') ? await yanit.json() : await yanit.text();
+  if (!yanit.ok) throw new Error(veri?.hata || `İstek başarısız (${yanit.status})`);
+  return veri;
+}
+
+function bildir(mesaj, tur = '') {
+  const kutu = document.createElement('div');
+  kutu.className = 'bildirim ' + tur;
+  kutu.textContent = mesaj;
+  $('#bildirimler').append(kutu);
+  setTimeout(() => kutu.remove(), 4500);
+}
+
+function calisiyor(acik, yazi = 'Okunuyor…') {
+  $('#calisiyorYazi').textContent = yazi;
+  $('#calisiyor').classList.toggle('acik', acik);
+}
+
+// ——— liste —————————————————————————————————————————————————————
+
+function filtreler() {
+  return new URLSearchParams({
+    arama: $('#arama').value,
+    durum: $('#fDurum').value,
+    talepNo: $('#fTalep').value,
+    proje: $('#fProje').value,
+    nereden: $('#fNereden').value,
+  });
+}
+
+async function yenile() {
+  const [liste, durum] = await Promise.all([
+    api('/api/kalemler?' + filtreler()),
+    api('/api/durum'),
+  ]);
+  kalemler = liste;
+  sayaclariCiz(durum.ozet);
+  seceneklerCiz(durum.secenekler);
+  $('#ocrTekrar').hidden = !durum.ocrHazir;
+  tabloCiz();
+}
+
+function sayaclariCiz(o) {
+  $('#sayaclar').innerHTML = `
+    <div class="sayac">Talep <b>${o.talep}</b></div>
+    <div class="sayac">Kalem <b>${o.kalem}</b></div>
+    <div class="sayac bekleyen">Bekleyen <b>${o.bekleyen}</b></div>
+    <div class="sayac tamam">Tamamlanan <b>${o.tamamlanan}</b></div>`;
+}
+
+function seceneklerCiz(s) {
+  const doldur = (id, degerler, hepsi) => {
+    const el = $(id), secili = el.value;
+    el.innerHTML = `<option value="">${hepsi}</option>` +
+      degerler.map((d) => `<option${d === secili ? ' selected' : ''}>${kacir(d)}</option>`).join('');
+  };
+  doldur('#fTalep', s.talepNo, 'Tüm talepler');
+  doldur('#fProje', s.proje, 'Tüm projeler');
+  doldur('#fNereden', s.nereden, 'Tüm ambarlar');
+}
+
+function kalemSatiri(k, gruplu) {
+  const miktar = kacir(k.miktar) + (k.birim ? ` <span style="color:var(--soluk)">${kacir(k.birim)}</span>` : '');
+  return `
+  <tr class="${k.tamamlandi ? 'bitti' : ''}" data-id="${k.id}">
+    <td class="durumHucre"><input type="checkbox" data-is="tamamla" ${k.tamamlandi ? 'checked' : ''}></td>
+    <td class="talepNo">${kacir(k.talep_no)}<span class="altYazi">#${k.sira}</span></td>
+    <td><span class="duzenlenir" contenteditable data-alan="proje">${kacir(k.proje)}</span></td>
+    <td class="kod"><span class="duzenlenir" contenteditable data-alan="malzeme_kodu">${kacir(k.malzeme_kodu)}</span></td>
+    <td>
+      <span class="aciklamaAna duzenlenir" contenteditable data-alan="aciklama">${kacir(k.aciklama)}</span>
+      ${k.metin ? `<span class="altYazi">${kacir(k.metin)}</span>` : ''}
+    </td>
+    <td class="sayi">${miktar}</td>
+    <td><span class="duzenlenir" contenteditable data-alan="nereden">${kacir(k.nereden)}</span></td>
+    <td>${k.tamamlandi
+        ? `<span class="rozet tamam">Tamamlandı</span>${k.tamamlanma_tarihi ? `<span class="altYazi">${kacir(k.tamamlanma_tarihi)}</span>` : ''}`
+        : '<span class="rozet bekliyor">Bekliyor</span>'}</td>
+    <td>${!gruplu && k.pdf_dosya ? `<button class="dugme ufak" data-is="pdf" data-talep="${k.talep_id}">PDF</button>` : ''}</td>
+  </tr>`;
+}
+
+function grupBasligi(talepId, satirlar) {
+  const ilk = satirlar[0];
+  const biten = satirlar.filter((k) => k.tamamlandi).length;
+  const oran = Math.round((biten / satirlar.length) * 100);
+  const hepsiBitti = biten === satirlar.length;
+  return `
+  <tr class="grupBasi" data-talep="${talepId}">
+    <td colspan="9">
+      <div class="grupIc">
+        <input type="checkbox" data-is="talepTamamla" data-talep="${talepId}" ${hepsiBitti ? 'checked' : ''}
+               title="Talebin tüm kalemlerini işaretle">
+        <span class="no">${kacir(ilk.talep_no)}</span>
+        <span class="rozet ${ilk.kaynak === 'ocr' ? 'ocr' : 'metin'}">${ilk.kaynak === 'ocr' ? 'OCR' : ilk.kaynak === 'metin' ? 'metin katmanı' : 'elle'}</span>
+        <span class="bilgi">${kacir(ilk.talep_tarihi || '')} ${ilk.talep_kullanici ? '· ' + kacir(ilk.talep_kullanici) : ''} ${ilk.talep_birim ? '· ' + kacir(ilk.talep_birim) : ''}</span>
+        <div class="cubuk" title="${biten}/${satirlar.length}"><i style="width:${oran}%"></i></div>
+        <span class="bilgi">${biten}/${satirlar.length} kalem</span>
+        <div class="bosluk" style="flex:1"></div>
+        ${ilk.pdf_dosya ? `<button class="dugme ufak" data-is="pdf" data-talep="${talepId}">PDF aç</button>` : ''}
+        <button class="dugme ufak tehlike" data-is="talepSil" data-talep="${talepId}">Sil</button>
+      </div>
+    </td>
+  </tr>`;
+}
+
+function tabloCiz() {
+  const govde = $('#govde');
+  $('#bosMesaj').hidden = kalemler.length > 0;
+  if (!kalemler.length) { govde.innerHTML = ''; return; }
+
+  if (!$('#grupla').checked) {
+    govde.innerHTML = kalemler.map((k) => kalemSatiri(k, false)).join('');
+    return;
+  }
+  const gruplar = new Map();
+  for (const k of kalemler) {
+    if (!gruplar.has(k.talep_id)) gruplar.set(k.talep_id, []);
+    gruplar.get(k.talep_id).push(k);
+  }
+  govde.innerHTML = [...gruplar]
+    .map(([id, satirlar]) => grupBasligi(id, satirlar) + satirlar.map((k) => kalemSatiri(k, true)).join(''))
+    .join('');
+}
+
+// ——— tablo etkileşimleri ————————————————————————————————————————
+
+$('#govde').addEventListener('change', async (olay) => {
+  const el = olay.target;
+  try {
+    if (el.dataset.is === 'tamamla') {
+      const id = el.closest('tr').dataset.id;
+      await api(`/api/kalem/${id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ tamamlandi: el.checked }),
+      });
+      await yenile();
+    } else if (el.dataset.is === 'talepTamamla') {
+      await api(`/api/talep/${el.dataset.talep}/durum`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ tamamlandi: el.checked }),
+      });
+      await yenile();
+    }
+  } catch (e) { bildir(e.message, 'kotu'); }
+});
+
+$('#govde').addEventListener('click', async (olay) => {
+  const dugme = olay.target.closest('button');
+  if (!dugme) return;
+  if (dugme.dataset.is === 'pdf') {
+    window.open(`/api/pdf/${dugme.dataset.talep}`, '_blank');
+  } else if (dugme.dataset.is === 'talepSil') {
+    if (!confirm('Bu talep ve tüm kalemleri silinsin mi? PDF dosyası da silinir.')) return;
+    try {
+      await api(`/api/talep/${dugme.dataset.talep}`, { method: 'DELETE' });
+      bildir('Talep silindi.', 'iyi');
+      await yenile();
+    } catch (e) { bildir(e.message, 'kotu'); }
+  }
+});
+
+// Hücre düzenleme: odaktan çıkınca kaydet
+$('#govde').addEventListener('focusout', async (olay) => {
+  const el = olay.target;
+  if (!el.dataset?.alan) return;
+  const id = el.closest('tr').dataset.id;
+  const kalem = kalemler.find((k) => String(k.id) === id);
+  const yeni = el.textContent.trim();
+  if (!kalem || kalem[el.dataset.alan] === yeni) return;
+  try {
+    await api(`/api/kalem/${id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ [el.dataset.alan]: yeni }),
+    });
+    kalem[el.dataset.alan] = yeni;
+    bildir('Güncellendi.', 'iyi');
+  } catch (e) { bildir(e.message, 'kotu'); el.textContent = kalem[el.dataset.alan] ?? ''; }
+});
+
+$('#govde').addEventListener('keydown', (olay) => {
+  if (olay.key === 'Enter' && olay.target.dataset?.alan) { olay.preventDefault(); olay.target.blur(); }
+  if (olay.key === 'Escape' && olay.target.dataset?.alan) olay.target.blur();
+});
+
+// ——— filtreler ——————————————————————————————————————————————————
+
+let aramaZaman;
+$('#arama').addEventListener('input', () => {
+  clearTimeout(aramaZaman);
+  aramaZaman = setTimeout(yenile, 220);
+});
+for (const id of ['#fDurum', '#fTalep', '#fProje', '#fNereden']) $(id).addEventListener('change', yenile);
+$('#grupla').addEventListener('change', tabloCiz);
+$('#csvDugme').addEventListener('click', () => { window.location = '/api/disaver.csv?' + filtreler(); });
+
+// ——— PDF yükleme ————————————————————————————————————————————————
+
+$('#yukleDugme').addEventListener('click', () => $('#dosyaSecici').click());
+$('#dosyaSecici').addEventListener('change', (olay) => {
+  const dosya = olay.target.files[0];
+  olay.target.value = '';
+  if (dosya) pdfGonder(dosya);
+});
+
+const atma = $('#atmaAlani');
+for (const olayAdi of ['dragenter', 'dragover']) {
+  document.addEventListener(olayAdi, (o) => { o.preventDefault(); atma.classList.add('uzerinde'); });
+}
+for (const olayAdi of ['dragleave', 'drop']) {
+  document.addEventListener(olayAdi, (o) => {
+    o.preventDefault();
+    if (olayAdi === 'drop' || o.relatedTarget === null) atma.classList.remove('uzerinde');
+  });
+}
+document.addEventListener('drop', (o) => {
+  const dosya = [...(o.dataTransfer?.files || [])].find((d) => /\.pdf$/i.test(d.name) || d.type === 'application/pdf');
+  if (dosya) pdfGonder(dosya);
+  else if (o.dataTransfer?.files.length) bildir('Sadece PDF dosyası yükleyebilirsiniz.', 'kotu');
+});
+atma.addEventListener('click', () => $('#dosyaSecici').click());
+
+async function pdfGonder(dosya, ocrZorla = false) {
+  calisiyor(true, ocrZorla ? 'OCR yapılıyor, biraz sürebilir…' : 'PDF okunuyor…');
+  try {
+    const tampon = await dosya.arrayBuffer();
+    const sonuc = await api('/api/coz' + (ocrZorla ? '?ocr=1' : ''), {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/pdf',
+        'x-dosya-adi': btoa(String.fromCharCode(...new TextEncoder().encode(dosya.name))),
+      },
+      body: tampon,
+    });
+    sonDosya = dosya;
+    onizlemeAc(sonuc);
+  } catch (e) {
+    bildir(e.message, 'kotu');
+  } finally {
+    calisiyor(false);
+  }
+}
+
+// ——— önizleme penceresi ————————————————————————————————————————
+
+function onizlemeAc(sonuc) {
+  cozum = sonuc;
+  $('#kaynakRozet').innerHTML = `<span class="rozet ${sonuc.kaynak === 'ocr' ? 'ocr' : 'metin'}">${
+    sonuc.kaynak === 'ocr' ? 'OCR ile okundu' : 'metin katmanından okundu'}</span>`;
+
+  const uyarilar = [...(sonuc.uyarilar || [])];
+  if (sonuc.uyari) uyarilar.push(sonuc.uyari);
+  if (sonuc.zatenVar) uyarilar.push(`Bu PDF daha önce "${sonuc.zatenVar.talep_no}" talebi olarak kaydedilmiş.`);
+  $('#uyarilar').innerHTML = uyarilar.length
+    ? `<div class="uyariKutu"><b>Kontrol edin:</b><ul>${uyarilar.map((u) => `<li>${kacir(u)}</li>`).join('')}</ul></div>`
+    : '';
+
+  const kopya = Boolean(sonuc.zatenVar);
+  $('#onayla').disabled = kopya;
+  $('#onayla').textContent = kopya ? 'Zaten kayıtlı' : 'Kaydet';
+
+  $('#bTalepNo').value = sonuc.baslik.talepNo || '';
+  $('#bNereden').value = sonuc.baslik.nereden || '';
+  $('#bBirim').value = sonuc.baslik.birim || '';
+  $('#bKullanici').value = sonuc.baslik.kullanici || '';
+  $('#bTarih').value = sonuc.baslik.tarihSaat || '';
+  $('#bNot').value = '';
+
+  onizlemeTabloCiz();
+  $('#onizlemeOrtu').classList.add('acik');
+}
+
+function onizlemeTabloCiz() {
+  const alanlar = ['proje', 'poz', 'kod', 'aciklama', 'metin', 'miktar', 'birim'];
+  $('#onizlemeGovde').innerHTML = cozum.kalemler.map((k, i) => `
+    <tr data-i="${i}">
+      <td style="color:var(--soluk)">${k.sira ?? i + 1}</td>
+      ${alanlar.map((a) => `<td contenteditable data-alan="${a}"${a === 'miktar' ? ' class="sayi"' : ''}>${kacir(k[a])}</td>`).join('')}
+      <td><button class="dugme ufak tehlike" data-is="satirSil">×</button></td>
+    </tr>`).join('');
+  $('#onizlemeOzet').textContent = `${cozum.kalemler.length} kalem`;
+}
+
+$('#onizlemeGovde').addEventListener('input', (olay) => {
+  const hucre = olay.target;
+  if (!hucre.dataset?.alan) return;
+  cozum.kalemler[Number(hucre.closest('tr').dataset.i)][hucre.dataset.alan] = hucre.textContent.trim();
+});
+
+$('#onizlemeGovde').addEventListener('click', (olay) => {
+  if (olay.target.closest('button')?.dataset.is !== 'satirSil') return;
+  cozum.kalemler.splice(Number(olay.target.closest('tr').dataset.i), 1);
+  onizlemeTabloCiz();
+});
+
+$('#satirEkle').addEventListener('click', () => {
+  cozum.kalemler.push({
+    sira: cozum.kalemler.length + 1,
+    proje: cozum.kalemler.at(-1)?.proje ?? '', poz: '', kod: '',
+    aciklama: '', metin: '', miktar: '', birim: cozum.kalemler.at(-1)?.birim ?? '',
+  });
+  onizlemeTabloCiz();
+});
+
+$('#ocrTekrar').addEventListener('click', () => { if (sonDosya) pdfGonder(sonDosya, true); });
+$('#vazgec').addEventListener('click', () => $('#onizlemeOrtu').classList.remove('acik'));
+$('#onizlemeOrtu').addEventListener('click', (o) => { if (o.target === $('#onizlemeOrtu')) $('#vazgec').click(); });
+document.addEventListener('keydown', (o) => { if (o.key === 'Escape' && $('#onizlemeOrtu').classList.contains('acik')) $('#vazgec').click(); });
+
+$('#onayla').addEventListener('click', async () => {
+  const nereden = $('#bNereden').value.trim();
+  const govde = {
+    ozet: cozum.ozet,
+    ad: cozum.ad,
+    kaynak: cozum.kaynak,
+    sayfaSayisi: cozum.sayfaSayisi,
+    baslik: {
+      talepNo: $('#bTalepNo').value.trim(),
+      nereden,
+      birim: $('#bBirim').value.trim(),
+      kullanici: $('#bKullanici').value.trim(),
+      tarihSaat: $('#bTarih').value.trim(),
+      depoYeri: cozum.baslik.depoYeri,
+      uretimYeri: cozum.baslik.uretimYeri,
+      notlar: $('#bNot').value.trim(),
+    },
+    kalemler: cozum.kalemler.map((k) => ({ ...k, nereden: k.nereden || nereden })),
+  };
+  if (!govde.baslik.talepNo) return bildir('Talep no boş olamaz.', 'kotu');
+
+  calisiyor(true, 'Kaydediliyor…');
+  try {
+    const sonuc = await api('/api/kaydet', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(govde),
+    });
+    $('#onizlemeOrtu').classList.remove('acik');
+    bildir(`${sonuc.kalemSayisi} kalem kaydedildi.`, 'iyi');
+    await yenile();
+  } catch (e) {
+    bildir(e.message, 'kotu');
+  } finally {
+    calisiyor(false);
+  }
+});
+
+yenile().catch((e) => bildir(e.message, 'kotu'));
+</script>
+</body>
+</html>
