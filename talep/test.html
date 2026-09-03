@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Talep Takip — testler</title>
+<style>
+  body { font: 14px/1.5 "Segoe UI", system-ui, sans-serif; margin: 24px; max-width: 900px; }
+  h1 { font-size: 18px; }
+  #ozet { padding: 10px 14px; border-radius: 8px; margin: 14px 0; font-weight: 600; }
+  #ozet.gecti { background: #e6f4ea; color: #1a7f37; }
+  #ozet.kaldi { background: #fdeceb; color: #c1372c; }
+  #ozet.calisiyor { background: #eef1f5; color: #55606d; }
+  ol { padding-left: 22px; }
+  li { margin: 3px 0; }
+  li.gecti::marker { content: "✔ "; color: #1a7f37; }
+  li.kaldi::marker { content: "✘ "; color: #c1372c; }
+  li.kaldi { color: #c1372c; }
+  pre { background: #f6f7f9; padding: 8px 10px; border-radius: 6px; overflow: auto; font-size: 12px; margin: 4px 0 8px; }
+</style>
+</head>
+<body>
+<h1>Talep Takip — testler</h1>
+<p>Bu dosyayı çift tıklayarak açın; testler kendiliğinden çalışır.</p>
+<div id="ozet" class="calisiyor">Çalışıyor…</div>
+<ol id="liste"></ol>
+
+<script src="js/kutuphane/pdf.js"></script>
+<script src="js/kutuphane/pdf-worker.b64.js"></script>
+<script src="js/kutuphane/pdf-fontlar.b64.js"></script>
+<script src="js/kutuphane/sql-wasm.js"></script>
+<script src="js/kutuphane/sql-wasm.b64.js"></script>
+<script src="js/ayristir.js"></script>
+<script src="js/pdf-metin.js"></script>
+<script src="js/veritabani.js"></script>
+<script src="test/ornek.b64.js"></script>
+
+<script>
+'use strict';
+
+const sonuclar = [];
+
+function esit(bulunan, beklenen, ad) {
+  const a = JSON.stringify(bulunan);
+  const b = JSON.stringify(beklenen);
+  sonuclar.push({ ad, gecti: a === b, ayrinti: a === b ? '' : `bulunan: ${a}\nbeklenen: ${b}` });
+}
+function dogru(kosul, ad, ayrinti = '') {
+  sonuclar.push({ ad, gecti: Boolean(kosul), ayrinti: kosul ? '' : ayrinti });
+}
+
+const kelime = (metin, x0, x1, y, h = 9) => ({ metin, x0, x1, y, h });
+const A = () => TT.ayristirici;
+
+// ——— testler ———
+
+function sadeTesti() {
+  esit(A().sade('İŞLENMİŞ DEMİR'), 'islenmis demir', 'sade(): Türkçe harfler karşılaştırılabilir hâle gelir');
+  esit(A().sade('  Malzeme   Kodu '), 'malzeme kodu', 'sade(): fazla boşluklar temizlenir');
+  esit(A().sade('Üretim Yeri'), 'uretim yeri', 'sade(): Ü → u');
+}
+
+function miktarTesti() {
+  const m = A().miktariSayiyaCevir;
+  esit(m('55,820'), 55.82, 'miktar: "55,820" → 55.82 (Türkçe ondalık)');
+  esit(m('1.234'), 1234, 'miktar: "1.234" → 1234 (binlik ayracı)');
+  esit(m('55.82'), 55.82, 'miktar: "55.82" → 55.82 (ondalık nokta)');
+  esit(m('1.234.567,89'), 1234567.89, 'miktar: "1.234.567,89" → 1234567.89');
+  esit(m('1,234,567.89'), 1234567.89, 'miktar: "1,234,567.89" → 1234567.89');
+  esit(m(''), null, 'miktar: boş → null');
+  esit(m('abc'), null, 'miktar: harf → null');
+}
+
+function satirTesti() {
+  // 18 pt aralıkla üç satır; her satırın kendi içinde 2,5 pt oynama var.
+  const kelimeler = [];
+  for (let s = 0; s < 3; s++) {
+    for (let k = 0; k < 6; k++) {
+      kelimeler.push(kelime(`s${s}k${k}`, k * 60, k * 60 + 40, 100 + s * 18 + (k % 2 ? 2.5 : 0)));
+    }
+  }
+  const satirlar = A().satirlar(kelimeler);
+  esit(satirlar.length, 3, 'satırlar: satır içi oynama satırları birleştirmez');
+  esit(satirlar.map((s) => s.kelimeler.length), [6, 6, 6], 'satırlar: her satırda 6 kelime');
+}
+
+function hucreOnarimTesti() {
+  // "B50" açıklama ile miktar kolonunun tam sınırında duruyor.
+  const kelimeler = [
+    kelime('No', 26, 37, 100),
+    kelime('Malzeme', 483, 520, 100), kelime('Kodu', 521, 543, 100),
+    kelime('SAP', 584, 600, 100), kelime('Malzeme', 602, 638, 100), kelime('Tanımı', 640, 667, 100),
+    kelime('Miktar', 704, 727, 100),
+    kelime('Birim', 745, 767, 100),
+    kelime('00001', 21, 43, 120),
+    kelime('4600032199', 471, 515, 120),
+    kelime('Ø20', 661, 676, 120),
+    kelime('B50', 678, 692, 120), // merkezi 685 → miktar kolonuna düşer, geri alınmalı
+    kelime('55,820', 696, 720, 120),
+    kelime('KG', 741, 752, 120),
+  ];
+  const { kalemler } = A().ayristir([{ no: 1, genislik: 792, yukseklik: 612, kelimeler }]);
+  esit(kalemler.length, 1, 'onarım: tek kalem okunur');
+  esit(kalemler[0].miktar, '55,820', 'onarım: miktar doğru hücrede');
+  esit(kalemler[0].aciklama, 'Ø20 B50', 'onarım: sınıra oturan "B50" açıklamaya geri döner');
+  esit(kalemler[0].birim, 'KG', 'onarım: birim doğru');
+  esit(kalemler[0].kod, '4600032199', 'onarım: malzeme kodu doğru');
+}
+
+function yapisikBirimTesti() {
+  const kelimeler = [
+    kelime('No', 26, 37, 100),
+    kelime('Malzeme', 483, 520, 100), kelime('Kodu', 521, 543, 100),
+    kelime('Miktar', 704, 727, 100),
+    kelime('00007', 21, 43, 120),
+    kelime('4600032199', 471, 515, 120),
+    kelime('12,5KG', 696, 730, 120),
+  ];
+  const { kalemler } = A().ayristir([{ no: 1, genislik: 792, yukseklik: 612, kelimeler }]);
+  esit(kalemler[0].miktar, '12,5', 'yapışık birim: "12,5KG" → miktar 12,5');
+  esit(kalemler[0].birim, 'KG', 'yapışık birim: "12,5KG" → birim KG');
+}
+
+async function ornekFormTesti() {
+  const bayt = TT.pdf.b64Ikili(window.ORNEK_PDF_B64);
+  const { kaynak, sayfalar } = await TT.pdf.pdfOku(bayt);
+  esit(kaynak, 'metin', 'örnek form: metin katmanından okunur, OCR gerekmez');
+
+  const { baslik, kalemler, uyarilar } = A().ayristir(sayfalar);
+  esit(baslik.talepNo, '0022866', 'örnek form: talep no');
+  esit(baslik.depoTanimi, '8 NOLU AMBAR', 'örnek form: depo tanımı');
+  esit(baslik.nereden, '8 NOLU AMBAR (1024)', 'örnek form: nereden');
+  esit(baslik.kullanici, 'MKEFELIOGLU', 'örnek form: talep eden kullanıcı');
+  esit(baslik.birim, 'Reaktör-4 IC Nük', 'örnek form: talep eden birim');
+  esit(uyarilar, [], 'örnek form: uyarı çıkmaz');
+  esit(kalemler.length, 13, 'örnek form: 13 kalem');
+  esit(kalemler[0], {
+    sayfa: 1, sira: 1, metin: 'İŞLENMİŞ DEMİR', proje: 'AKU.0179.40UJA.0.KZ.TB0016',
+    poz: '34', kod: '4600032199', aciklama: '0179.40UJA.0.KZ.TB0016 / Ø20 B50',
+    miktar: '55,820', birim: 'KG', miktarSayi: 55.82,
+  }, 'örnek form: ilk kalem birebir');
+  esit(kalemler[12].miktar, '57,110', 'örnek form: son kalemin miktarı');
+  esit(kalemler[12].poz, '1', 'örnek form: son kalemin pozu');
+  dogru(kalemler.every((k) => k.kod === '4600032199' && k.birim === 'KG' && k.miktarSayi > 0),
+    'örnek form: tüm kalemlerde kod, birim ve miktar dolu');
+  return { baslik, kalemler };
+}
+
+async function veritabaniTesti({ baslik, kalemler }) {
+  const db = await TT.Veritabani.ac();
+  const { talepId, kalemSayisi } = db.talepEkle({
+    baslik, kalemler,
+    pdf: { dosya: 'x.pdf', ozet: 'ozet1', ad: 'x.pdf', kaynak: 'metin', sayfaSayisi: 1 },
+  });
+  esit(kalemSayisi, 13, 'veritabanı: 13 kalem yazılır');
+  esit(db.ozet(), { kalem: 13, tamamlanan: 0, bekleyen: 13, talep: 1 }, 'veritabanı: özet doğru');
+
+  for (const q of ['demir', 'DEMİR', 'İşlenmiş', 'tb0016', 'demir 4600']) {
+    esit(db.kalemler({ arama: q }).length, 13, `arama: "${q}" 13 kalem bulur`);
+  }
+  esit(db.kalemler({ arama: 'bakır' }).length, 0, 'arama: "bakır" hiçbir şey bulmaz');
+
+  dogru(db.pdfVarMi('ozet1'), 'kopya: aynı PDF özeti tanınır');
+  esit(db.pdfVarMi('baska'), null, 'kopya: farklı özet tanınmaz');
+
+  const ilk = db.kalemler()[0];
+  db.kalemDurumu(ilk.id, true);
+  esit(db.ozet().tamamlanan, 1, 'tamamlama: tek kalem işaretlenir');
+  esit(db.kalemler({ durum: 'bekleyen' }).length, 12, 'tamamlama: bekleyen sayısı düşer');
+  dogru(db.kalem(ilk.id).tamamlanma_tarihi, 'tamamlama: tarih damgası konur');
+
+  db.talepDurumu(talepId, true);
+  esit(db.ozet().bekleyen, 0, 'tamamlama: talebin tamamı işaretlenir');
+  db.talepDurumu(talepId, false);
+  esit(db.ozet().tamamlanan, 0, 'tamamlama: geri alınabilir');
+
+  db.kalemDuzenle(ilk.id, { aciklama: 'PASLANMAZ BORU' });
+  esit(db.kalemler({ arama: 'paslanmaz' }).length, 1, 'düzenleme: arama dizinine yansır');
+  db.kalemDuzenle(ilk.id, { tamamlandi: 1, talep_id: 999 });
+  esit(db.kalem(ilk.id).tamamlandi, 0, 'düzenleme: beyaz listede olmayan alan yazılmaz');
+  esit(db.kalem(ilk.id).talep_id, talepId, 'düzenleme: talep_id değiştirilemez');
+
+  // Dosyaya yazıp geri okuma — gerçek SQLite dosyası mı?
+  const dosya = db.disaAktar();
+  esit(new TextDecoder().decode(dosya.slice(0, 15)), 'SQLite format 3', 'dışa aktarma: gerçek SQLite dosyası');
+  const db2 = await TT.Veritabani.ac(dosya);
+  esit(db2.ozet().kalem, 13, 'dışa aktarma: geri okunduğunda kalemler yerinde');
+  db2.kapat();
+
+  db.talepSil(talepId);
+  esit(db.ozet(), { kalem: 0, tamamlanan: 0, bekleyen: 0, talep: 0 }, 'silme: talep ve kalemleri gider');
+  db.kapat();
+}
+
+// ——— çalıştır ———
+
+(async () => {
+  try {
+    sadeTesti();
+    miktarTesti();
+    satirTesti();
+    hucreOnarimTesti();
+    yapisikBirimTesti();
+    const cozum = await ornekFormTesti();
+    await veritabaniTesti(cozum);
+  } catch (e) {
+    sonuclar.push({ ad: 'beklenmeyen hata', gecti: false, ayrinti: String(e && e.stack || e) });
+  }
+
+  const liste = document.getElementById('liste');
+  liste.innerHTML = sonuclar
+    .map((s) => `<li class="${s.gecti ? 'gecti' : 'kaldi'}">${s.ad}${s.ayrinti ? `<pre>${s.ayrinti.replace(/[<&]/g, (c) => (c === '<' ? '&lt;' : '&amp;'))}</pre>` : ''}</li>`)
+    .join('');
+
+  const kalan = sonuclar.filter((s) => !s.gecti).length;
+  const ozet = document.getElementById('ozet');
+  ozet.className = kalan ? 'kaldi' : 'gecti';
+  ozet.textContent = kalan
+    ? `${sonuclar.length} testten ${kalan} tanesi başarısız.`
+    : `${sonuclar.length} testin hepsi geçti.`;
+
+  window.TEST_SONUC = { toplam: sonuclar.length, kalan, kalanlar: sonuclar.filter((s) => !s.gecti) };
+})();
+</script>
+</body>
+</html>

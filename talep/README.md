@@ -1,27 +1,30 @@
 # Talep Takip
 
 Ambardan malzeme talep formu PDF'lerini okuyup tabloya çeviren, tamamlanma
-durumunu takip eden lokal bir sistem. Tek bir HTML sayfası, SQLite veritabanı,
-hepsi bu klasörün içinde. Dışarıya hiçbir bağlantı açılmaz.
+durumunu takip eden sistem. **Kurulum yok, sunucu yok, Node yok** — `index.html`
+dosyasına çift tıklayın, açılır.
 
 ```
 PDF  →  metin katmanı / OCR  →  kolon ayrıştırma  →  onay ekranı  →  SQLite + PDF arşivi
 ```
 
-## Kurulum ve çalıştırma
+Veritabanı gerçek bir **SQLite** dosyası (`talepler.db`), PDF'ler de yanındaki
+`pdfler/` klasöründe duruyor. Uygulama dışarıya tek bir ağ isteği bile yapmıyor:
+PDF motoru, SQLite ve OCR — hepsi klasördeki dosyalarda.
 
-Node 22.5 veya üzeri gerekir (SQLite Node'un içinden geliyor, derlenecek paket yok).
+## Çalıştırma
 
-```bash
-cd talep
-npm install
-npm start
-```
+`index.html`'e çift tıklayın. İlk açılışta üstteki şeritten **Klasör seç**'e
+basıp verilerin duracağı klasörü gösterin (bu klasörün kendisi olabilir).
+Tarayıcı izni hatırlar; sonraki açılışlarda bir tık ile onaylarsınız.
 
-Sonra tarayıcıda **http://localhost:7345** adresini açın.
+- **Chrome / Edge** — klasöre doğrudan yazar, önerilen kullanım.
+- **Firefox / Safari** — klasör erişimi desteklenmiyor; veriler tarayıcının
+  kendi belleğinde tutulur, **Yedek al** düğmesiyle `talepler.db`'yi indirip
+  saklarsınız, **Yedekten yükle** ile geri alırsınız.
 
-Sunucu yalnızca `127.0.0.1` dinler; ağdaki başka bir makine erişemez.
-Farklı port için: `PORT=8080 npm start`.
+Ağ üzerinden paylaşmak isterseniz klasörü herhangi bir statik sunucuyla da
+yayınlayabilirsiniz — ama gerekmiyor.
 
 ## Kullanım
 
@@ -29,8 +32,8 @@ Farklı port için: `PORT=8080 npm start`.
 2. Açılan **onay ekranında** okunan satırları kontrol edin. Her hücre
    düzenlenebilir; satır silebilir, satır ekleyebilirsiniz. Talep no ve
    *nereden* (ambar) alanları üstteki kutulardan düzeltilir.
-3. **Kaydet**'e basın — kalemler veritabanına yazılır, PDF `veri/pdfler/`
-   klasörüne taşınır.
+3. **Kaydet**'e basın — kalemler veritabanına yazılır, PDF `pdfler/` klasörüne
+   kopyalanır.
 4. Listede her kalemin solundaki kutucukla **tamamlandı** işaretlenir. Talep
    başlığındaki kutucuk o talebin **tüm kalemlerini** birden işaretler; yanındaki
    çubuk kaçının bittiğini gösterir.
@@ -38,12 +41,13 @@ Farklı port için: `PORT=8080 npm start`.
 Listedeki proje, malzeme kodu, açıklama ve nereden hücreleri de yerinde
 düzenlenebilir — hücreye tıklayıp yazın, `Enter`'a basın.
 
-Üstteki arama kutusu Türkçe büyük/küçük harf ve `ı/i`, `ş/s`, `ğ/g` farkını
-gözetmez: `demir` yazınca `İŞLENMİŞ DEMİR` de gelir. Birden fazla kelime
-yazarsanız hepsini birden içeren kalemler listelenir.
+Arama kutusu Türkçe büyük/küçük harf ve `ı/i`, `ş/s`, `ğ/g` farkını gözetmez:
+`demir` yazınca `İŞLENMİŞ DEMİR` de gelir. Birden fazla kelime yazarsanız
+hepsini birden içeren kalemler listelenir.
 
-**CSV indir** o anki filtreye uyan satırları Excel'in açabileceği biçimde verir
-(UTF-8 BOM + noktalı virgül ayraç).
+**CSV indir** o anki filtreye uyan satırları Excel'in doğrudan açabileceği
+biçimde verir (UTF-8 BOM + noktalı virgül ayraç). **Yedek al** ise veritabanının
+o anki kopyasını indirir.
 
 ## Tablo kolonları
 
@@ -62,50 +66,60 @@ başlığına yansır.
 
 ## OCR
 
-PDF dijital üretilmişse (SAP çıktısı gibi) metin katmanı okunur — hızlı ve
-harfi harfine doğru. Metin katmanı yoksa (taranmış/fotoğraflanmış form) sayfa
-görüntüye çevrilip **tesseract.js** ile Türkçe+İngilizce olarak okunur.
+PDF dijital üretilmişse (SAP çıktısı gibi) metin katmanı okunur — hızlı ve harfi
+harfine doğru. Metin katmanı yoksa (taranmış/fotoğraflanmış form) sayfa
+görüntüye çevrilip **tesseract.js** ile Türkçe+İngilizce olarak okunur. Bu geçiş
+kendiliğinden olur; ayrıca onay ekranındaki **OCR ile tekrar oku** düğmesiyle
+elle de zorlayabilirsiniz.
 
-`npm install` bunu kendiliğinden kurar. Kurulmadıysa metin katmanı olan PDF'ler
-yine çalışır, taranmış olanlar için şunu çalıştırın:
+OCR motoru ve dil modelleri `js/kutuphane/ocr/` klasöründe hazır duruyor
+(~13 MB) ve yalnızca ilk OCR'da belleğe alınır. İnternet gerekmez. OCR'da
+`0/O`, `Ø/@` gibi karışmalar olabilir — onay ekranı tam da bunun için var.
 
-```bash
-npm install tesseract.js
+## Veriler nerede
+
+Seçtiğiniz klasörde:
+
+```
+talepler.db     SQLite veritabanı — DB Browser, Python, Excel eklentileri hepsi açar
+pdfler/         kaydedilen talep PDF'leri (talepno_özet.pdf)
 ```
 
-Türkçe+İngilizce dil dosyaları (~10 MB) ilk OCR'da bir kez indirilip
-`veri/tessdata/` altına konur, sonrasında oradan okunur. İnternete kapalı bir
-makinede kullanacaksanız önceden indirin:
-
-```bash
-npm run ocr-hazirla
-```
-
-Metin katmanı olan bir PDF yanlış okunduysa onay ekranındaki **OCR ile tekrar
-oku** düğmesi sayfayı görüntüden okutur. OCR'da `0/O` ve `9/g` gibi karışmalar
-olabilir; onay ekranı tam da bunun için var.
+Yedek almak için bu iki şeyi kopyalamanız yeterli. Uygulama klasörünü
+(`index.html` ve `js/`) aynı yere koyabilir ya da ayrı tutabilirsiniz.
 
 ## Dosyalar
 
 ```
 talep/
-├── sunucu.js              yerel HTTP sunucusu ve uç noktalar
-├── genel/index.html       tüm arayüz — tek dosya, harici bağımlılık yok
-├── lib/
-│   ├── pdf-metin.js       PDF'ten koordinatlı kelime çıkarma (metin katmanı + OCR)
-│   ├── ayristir.js        kelimeleri form başlığına ve tablo satırlarına çevirme
-│   └── db.js              SQLite şeması ve sorguları
-├── ornek/ornek-talep.pdf  ayrıştırıcının doğrulandığı örnek form
-├── test/                  node --test ile çalışan testler
-└── veri/                  ← çalışırken oluşur, sürüm kontrolüne girmez
-    ├── talepler.db        SQLite veritabanı
-    ├── pdfler/            kaydedilen talep PDF'leri
-    ├── tessdata/          OCR dil dosyaları (ilk kullanımda inen)
-    └── gecici/            henüz onaylanmamış yüklemeler
+├── index.html                  uygulama — çift tıklayıp açacağınız dosya
+├── test.html                   testler — çift tıklayınca çalışır
+├── js/
+│   ├── ayristir.js             kelimeleri form başlığına ve tablo satırlarına çevirme
+│   ├── pdf-metin.js            PDF'ten koordinatlı kelime çıkarma (metin katmanı + OCR)
+│   ├── veritabani.js           SQLite şeması ve sorguları
+│   ├── depo.js                 klasöre / tarayıcı belleğine yazma
+│   ├── uygulama.js             arayüz ve akış
+│   └── kutuphane/              dış kütüphaneler (aşağıya bakın)
+├── ornek/ornek-talep.pdf       ayrıştırıcının doğrulandığı örnek form
+└── test/ornek.b64.js           aynı PDF, testlerin kullanması için gömülü
 ```
 
-`veri/` klasörü `.gitignore`'da. Yedek almak için bu klasörü kopyalamanız
-yeterli — veritabanı ve PDF arşivi orada.
+### Kütüphaneler
+
+Hepsi klasörde duruyor, hiçbiri ağdan çekilmiyor:
+
+| Dosya | Ne |
+|---|---|
+| `kutuphane/pdf.js` | pdf.js 3.11.174 — PDF okuma ve çizme |
+| `kutuphane/pdf-worker.b64.js` | pdf.js worker'ı |
+| `kutuphane/pdf-fontlar.b64.js` | pdf.js yedek fontları (Liberation + Foxit) |
+| `kutuphane/sql-wasm.js` + `sql-wasm.b64.js` | sql.js 1.13 — SQLite 3.49 (WebAssembly) |
+| `kutuphane/ocr/` | tesseract.js 5.1 + WASM çekirdeği + tur/eng dil modelleri |
+
+`.b64.js` uzantılı dosyalar ikili içeriği base64 olarak taşıyor. Sebebi:
+`file://` üzerinde tarayıcı yan dosyaları `fetch` ile okumaya izin vermiyor, ama
+`<script src="...">` ile yüklemeye izin veriyor.
 
 ## Ayrıştırma nasıl çalışıyor
 
@@ -114,26 +128,33 @@ Satır sırasına göre metin okumak tablolarda güvenilmez; onun yerine
 
 1. Her kelime, `x0–x1` ve `y` konumuyla birlikte çıkarılır (metin katmanından ya
    da OCR'dan; ikisi de aynı biçimi döner).
-2. Kelimeler `y`'lerindeki *boşluklara* göre satırlara kümelenir. Ortalama
+2. Kelimeler `y`'lerindeki *boşluklara* göre satırlara kümelenir. Ortalamayı
    kaydıran yöntem OCR'ın gürültülü koordinatlarında satırları birbirine
    yapıştırıyordu; boşluk temelli kümeleme buna dayanıklı.
 3. `Miktar` ve `Malzeme Kodu` etiketlerini taşıyan satır **tablo başlığı** kabul
    edilir; etiket öbeklerinin arasındaki orta noktalar kolon sınırı olur.
 4. Her kelime merkez `x`'ine göre bir kolona düşer.
 5. Hücreler tipine göre **onarılır**: miktar sayı olmalı, birim harf olmalı, sıra
-   no tek sayı olmalı. Sınıra oturan parçalar (`B50` ile `55,820` arasındaki gibi)
-   böylece doğru hücreye taşınır.
-6. Sıra no ile başlamayan satırlar, bir önceki kalemin devamı sayılır — açıklaması
-   alt satıra taşan kalemler bölünmez.
+   no tek sayı olmalı. Sınıra oturan parçalar (örnek formda `B50` ile `55,820`
+   arasındaki gibi) böylece doğru hücreye taşınır.
+6. Sıra no ile başlamayan satırlar, bir önceki kalemin devamı sayılır —
+   açıklaması alt satıra taşan kalemler bölünmez.
 
 Kolon başlıkları tanınmazsa veya bir hücre okunamazsa onay ekranında sarı bir
 uyarı çıkar; kayıt öncesi elle düzeltilir.
 
 ## Testler
 
-```bash
-npm test
-```
+`test.html` dosyasına çift tıklayın. Örnek formun 13 kaleminin tamamının doğru
+okunduğunu, Türkçe aramanın çalıştığını, kolon sınırı onarımını ve veritabanı
+işlemlerini doğrular.
 
-Örnek formun 13 kaleminin tamamının doğru okunduğunu, Türkçe aramanın
-çalıştığını ve kolon sınırı onarımının doğru davrandığını doğrular.
+## Bilinen sınırlar
+
+- Klasöre yazma (File System Access API) yalnızca Chrome ve Edge'de var.
+  Firefox/Safari'de tarayıcı belleği + elle yedek kullanılır.
+- Tarayıcı, klasör iznini sayfa her açıldığında bir tıkla onaylatır; bu
+  tarayıcının güvenlik kuralı, uygulamadan atlatılamıyor.
+- Veritabanı her değişiklikte bütünüyle yeniden yazılır. Binlerce kalemde bile
+  dosya birkaç yüz KB olduğu için sorun değil, ama milyonluk ölçek için
+  tasarlanmadı.
