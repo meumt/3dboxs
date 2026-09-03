@@ -49,6 +49,14 @@ no, kaç kalem, metin katmanından mı OCR'dan mı okundu, bir sorun var mı.
   ekranını açar, düzeltip listeye dönersiniz.
 - **Kaydet** yalnız işaretli formları yazar.
 
+### Gruplama
+
+**Taleplere göre grupla** işaretliyken her talep bir başlık satırıyla geliyor.
+Başlığa (ya da soldaki ▾ okuna) tıklamak o talebin kalemlerini gizler; başlık
+satırı, sayaçları ve onay/red butonlarıyla birlikte durmaya devam eder.
+Filtrelerin yanındaki **Hepsini kapat / Hepsini aç** düğmesi tümünü birden
+toplar. Onlarca talep varken liste böyle bir ekrana sığıyor.
+
 ### Onay ve red
 
 Her kalemin solunda iki buton var: **✓ onayla**, **✕ reddet**. Etkin butona

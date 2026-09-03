@@ -18,6 +18,7 @@ TT.uygulama = (() => {
   let cozumYiginIndeksi = null; // tekli pencere bir yığın satırını düzenliyorsa
   let sonDosya = null;    // { ad, bayt } — "OCR ile tekrar oku" için elde tutulur
   let yigin = [];         // toplu yüklemede okunan formlar
+  const kapaliGruplar = new Set(); // kalemleri gizlenmiş talepler
 
   // ——— küçük yardımcılar ———
 
@@ -212,10 +213,14 @@ TT.uygulama = (() => {
     const yuzde = (n) => Math.round((n / satirlar.length) * 100);
     const kaynakAdi = ilk.kaynak === 'ocr' ? 'OCR' : ilk.kaynak === 'metin' ? 'metin katmanı' : 'elle';
     const toplu = onay === satirlar.length ? 'onay' : red === satirlar.length ? 'red' : '';
+    const kapali = kapaliGruplar.has(talepId);
     return `
-    <tr class="grupBasi" data-talep="${talepId}">
+    <tr class="grupBasi ${kapali ? 'kapali' : ''}" data-talep="${talepId}">
       <td colspan="9">
         <div class="grupIc">
+          <button class="acmaDugmesi" data-is="grupAc" data-talep="${talepId}"
+                  title="${kapali ? 'Kalemleri göster' : 'Kalemleri gizle'}"
+                  aria-expanded="${!kapali}">${kapali ? '▸' : '▾'}</button>
           ${durumDugmeleri(toplu, `data-talep="${talepId}"`)}
           <span class="no">${kacir(ilk.talep_no)}</span>
           <span class="rozet ${ilk.kaynak === 'ocr' ? 'ocr' : 'metin'}">${kaynakAdi}</span>
@@ -234,9 +239,16 @@ TT.uygulama = (() => {
     </tr>`;
   }
 
+  function grubuDegistir(talepId) {
+    if (kapaliGruplar.has(talepId)) kapaliGruplar.delete(talepId);
+    else kapaliGruplar.add(talepId);
+    tabloCiz();
+  }
+
   function tabloCiz() {
     const govde = $('#govde');
     $('#bosMesaj').hidden = kalemler.length > 0;
+    $('#gruplariKapat').hidden = true;
     if (!kalemler.length) {
       govde.innerHTML = '';
       return;
@@ -251,8 +263,14 @@ TT.uygulama = (() => {
       gruplar.get(k.talep_id).push(k);
     }
     govde.innerHTML = [...gruplar]
-      .map(([id, satirlar]) => grupBasligi(id, satirlar) + satirlar.map((k) => kalemSatiri(k, true)).join(''))
+      .map(([id, satirlar]) =>
+        grupBasligi(id, satirlar) +
+        (kapaliGruplar.has(id) ? '' : satirlar.map((k) => kalemSatiri(k, true)).join(''))
+      )
       .join('');
+    $('#gruplariKapat').hidden = gruplar.size === 0;
+    $('#gruplariKapat').textContent =
+      [...gruplar.keys()].every((id) => kapaliGruplar.has(id)) ? 'Hepsini aç' : 'Hepsini kapat';
   }
 
   // ——— PDF okuma ———
@@ -560,11 +578,20 @@ TT.uygulama = (() => {
 
     $('#govde').addEventListener('click', async (olay) => {
       const dugme = olay.target.closest('button');
+      const grupSatiri = olay.target.closest('tr.grupBasi');
+
+      // Grup başlığının boş yerine tıklamak da kalemleri açıp kapatır.
+      if (!dugme && grupSatiri && !olay.target.closest('[contenteditable]')) {
+        grubuDegistir(Number(grupSatiri.dataset.talep));
+        return;
+      }
       if (!dugme) return;
       const talepId = Number(dugme.dataset.talep);
 
       try {
-        if (dugme.dataset.is === 'durum') {
+        if (dugme.dataset.is === 'grupAc') {
+          grubuDegistir(talepId);
+        } else if (dugme.dataset.is === 'durum') {
           const satir = dugme.closest('tr');
           const yeni = dugme.classList.contains('etkin') ? 'bekliyor' : dugme.dataset.durum;
           if (satir.classList.contains('grupBasi')) db.talepDurumu(talepId, yeni);
@@ -625,6 +652,15 @@ TT.uygulama = (() => {
       $(id).addEventListener('change', yenile);
     }
     $('#grupla').addEventListener('change', tabloCiz);
+    $('#gruplariKapat').addEventListener('click', () => {
+      const idler = [...new Set(kalemler.map((k) => k.talep_id))];
+      const hepsiKapali = idler.every((id) => kapaliGruplar.has(id));
+      for (const id of idler) {
+        if (hepsiKapali) kapaliGruplar.delete(id);
+        else kapaliGruplar.add(id);
+      }
+      tabloCiz();
+    });
     $('#csvDugme').addEventListener('click', csvIndir);
     $('#yedekDugme').addEventListener('click', () =>
       TT.depo.indir(

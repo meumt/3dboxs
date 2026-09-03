@@ -6,27 +6,29 @@
 <title>Talep Takip</title>
 <style>
   :root {
-    --zemin: #f3f5f8;
-    --kart: #ffffff;
-    --kenar: #e3e7ed;
-    --kenar-koyu: #cdd4dd;
-    --yazi: #1f2733;
-    --soluk: #66717f;
-    --vurgu: #2563eb;
-    --vurgu-soluk: #eaf1ff;
-    --yesil: #15803d;
-    --yesil-soluk: #e8f6ed;
-    --kirmizi: #c2352b;
-    --kirmizi-soluk: #fdeeec;
-    --sari: #8a5d0a;
-    --sari-soluk: #fdf4e0;
-    --golge: 0 1px 2px rgba(31, 39, 51, .05), 0 6px 20px rgba(31, 39, 51, .06);
+    --zemin: #efe9de;          /* sayfa — sıcak kâğıt */
+    --kart: #faf6ef;           /* paneller */
+    --kenar: #e0d7c6;
+    --kenar-koyu: #cabda5;
+    --yazi: #2c261d;
+    --soluk: #786c5b;
+    --vurgu: #2f6a9e;
+    --vurgu-soluk: #e4edf4;
+    --yesil: #3d6b34;
+    --yesil-soluk: #e7eeda;
+    --kirmizi: #a3402c;
+    --kirmizi-soluk: #f6e3dc;
+    --sari: #8a5c10;
+    --sari-soluk: #f6ead0;
+    --golge: 0 1px 2px rgba(74, 58, 36, .07), 0 6px 20px rgba(74, 58, 36, .08);
     --yuvarlak: 10px;
   }
   /* Tek tema: aydınlık. Sistem koyu kipteyken de bu renkler kullanılır. */
   :root { color-scheme: light; }
 
   * { box-sizing: border-box; }
+  /* .dugme'nin display'i tarayıcının [hidden] kuralını eziyor. */
+  [hidden] { display: none !important; }
   html, body { margin: 0; height: 100%; }
   body {
     background: var(--zemin); color: var(--yazi);
@@ -80,7 +82,7 @@
   #depoSerit.uyari { background: var(--sari-soluk); border-color: var(--sari); color: var(--sari); }
   #depoSerit.iyi { background: var(--yesil-soluk); border-color: transparent; }
   #depoSerit code {
-    font-family: ui-monospace, Consolas, monospace; background: rgba(127,127,127,.14);
+    font-family: ui-monospace, Consolas, monospace; background: rgba(120, 108, 91, .16);
     padding: 1px 6px; border-radius: 5px;
   }
 
@@ -136,6 +138,14 @@
     background: var(--zemin); border-top: 2px solid var(--kenar);
     position: sticky; top: 33px; z-index: 4;
   }
+  .grupBasi { cursor: pointer; }
+  .grupBasi.kapali td { border-bottom: 1px solid var(--kenar-koyu); }
+  .acmaDugmesi {
+    width: 22px; height: 22px; padding: 0; display: grid; place-items: center;
+    border: 0; border-radius: 6px; background: transparent; color: var(--soluk);
+    font-size: 11px; line-height: 1; cursor: pointer;
+  }
+  .acmaDugmesi:hover { background: var(--kenar); color: var(--yazi); }
   .grupIc { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
   .grupIc .no { font-weight: 600; font-size: 14px; font-family: ui-monospace, Consolas, monospace; }
   .grupIc .bilgi { color: var(--soluk); font-size: 12px; }
@@ -172,11 +182,11 @@
   .bos { padding: 48px 20px; text-align: center; color: var(--soluk); }
 
   /* ——— pencere ——— */
-  .ortu { position: fixed; inset: 0; z-index: 50; display: none; background: rgba(10,14,20,.55); padding: 24px; overflow: auto; }
+  .ortu { position: fixed; inset: 0; z-index: 50; display: none; background: rgba(52, 42, 28, .5); padding: 24px; overflow: auto; }
   .ortu.acik { display: block; }
   .pencere {
     background: var(--kart); border: 1px solid var(--kenar); border-radius: 14px;
-    max-width: 1400px; margin: 0 auto; box-shadow: 0 24px 64px rgba(0,0,0,.35);
+    max-width: 1400px; margin: 0 auto; box-shadow: 0 24px 64px rgba(52, 42, 28, .32);
     display: flex; flex-direction: column; max-height: calc(100vh - 48px);
   }
   .pencere > header {
@@ -213,7 +223,7 @@
   .bildirim.kotu { border-left-color: var(--kirmizi); }
   @keyframes gir { from { opacity: 0; transform: translateY(6px); } }
 
-  #calisiyor { position: fixed; inset: 0; z-index: 80; display: none; background: rgba(10,14,20,.45); place-items: center; color: #fff; text-align: center; }
+  #calisiyor { position: fixed; inset: 0; z-index: 80; display: none; background: rgba(52, 42, 28, .45); place-items: center; color: #fff; text-align: center; }
   #calisiyor.acik { display: grid; }
   .donen {
     width: 34px; height: 34px; border: 3px solid rgba(255,255,255,.25); border-top-color: #fff;
@@ -254,6 +264,7 @@
     <select id="fProje"><option value="">Tüm projeler</option></select>
     <select id="fNereden"><option value="">Tüm ambarlar</option></select>
     <label class="anahtar"><input type="checkbox" id="grupla" checked> Taleplere göre grupla</label>
+    <button class="dugme ufak" id="gruplariKapat" hidden>Hepsini kapat</button>
   </div>
 
   <div class="tabloKutu">
