@@ -139,11 +139,11 @@ TT.ayristirici = (() => {
 
   const KOLON_DESENLERI = [
     { anahtar: 'sira', desen: /^(no|no\.|sira( ?no)?|s\.? ?no|kalem|item no)$/ },
-    { anahtar: 'metin', desen: /^(malzeme ?\/? ?talep metni|talep metni|malzeme metni)$/ },
+    { anahtar: 'metin', desen: /^(malzeme ?\/? ?talep metni|talep metni|malzeme metni|material description|material desc\.?|description)$/ },
     { anahtar: 'proje', desen: /^(proje|proje kodu|is emri|project|project no|project drawing number|drawing number)$/ },
     { anahtar: 'poz', desen: /^(poz|poz no|item ?\/? ?poz|item|position)$/ },
     { anahtar: 'kod', desen: /^(malzeme kodu|stok kodu|malzeme no|kod|material code|stock code|part no|order no|siparis no)$/ },
-    { anahtar: 'aciklama', desen: /^((sap )?malzeme tanimi|tanim|aciklama|malzeme adi|material description|material desc\.?|description)$/ },
+    { anahtar: 'aciklama', desen: /^((sap )?malzeme tanimi|tanim|aciklama|malzeme adi|material definition)$/ },
     { anahtar: 'miktar', desen: /^(miktar|adet|quantity|qty)$/ },
     { anahtar: 'birim', desen: /^(birim|olcu birimi|br|unit|uom)$/ },
     // Aşağıdakiler altı ana kolona girmiyor; açıklamanın altına küçük punto ile iliştiriliyor.
@@ -158,6 +158,10 @@ TT.ayristirici = (() => {
   // "Order No" gerçek bir malzeme kodu değil; kod kolonu olarak o kullanıldığında
   // kullanıcıya söylüyoruz.
   const GERCEK_KOD = /^(malzeme kodu|stok kodu|malzeme no|kod|material code|stock code|part no)$/;
+
+  // Formda karşılığı olmayan alanların yerine yazılanlar.
+  const VARSAYILAN_NEREDEN = 'Endüstriyel';
+  const VARSAYILAN_KULLANICI = 'Reaktör 4 T.O.';
 
   // Ana altı kolona girmeyen, açıklamanın altında toplanan kolonlar.
   const EK_KOLONLAR = [
@@ -204,13 +208,68 @@ TT.ayristirici = (() => {
     return enIyi.kolonlar;
   }
 
+  /**
+   * Kolon sınırlarını veri satırlarına bakarak keskinleştirir.
+   *
+   * Sınır başta iki başlık etiketinin ortası olarak alınıyor, ama başlık ortalı
+   * yazılıp veri sola dayalı olduğunda bu orta nokta bir hücrenin *içine*
+   * düşebiliyor: bir formda "Item/Poz" başlığı x=374'ten başlarken altındaki
+   * "TA5" 341'de duruyor ve proje kolonuna kayıyordu.
+   *
+   * Çözüm: veri kelimelerinin kapladığı aralıkları çıkarıp aralarındaki boş
+   * koridorları buluyoruz. Bir sınır bir kelimenin ortasından geçiyorsa, yakındaki
+   * en uygun koridorun ortasına çekiliyor. "Yakın" ölçüsü dar olan kolonun
+   * genişliğine bağlı; böylece hiç verisi olmayan bir kolonun sınırı yerinden
+   * oynamıyor.
+   */
+  function sinirlariVeriyeGoreDuzelt(kolonlar, veriSatirlari) {
+    const araliklar = [];
+    for (const satir of veriSatirlari) {
+      for (const k of satir.kelimeler) araliklar.push([k.x0, k.x1]);
+    }
+    if (araliklar.length < 2) return kolonlar;
+    araliklar.sort((a, b) => a[0] - b[0]);
+
+    // Üst üste binen kelimeleri birleştir → dolu bölgeler, aralarında koridorlar.
+    const dolu = [];
+    for (const [a, b] of araliklar) {
+      const son = dolu[dolu.length - 1];
+      if (son && a <= son[1]) son[1] = Math.max(son[1], b);
+      else dolu.push([a, b]);
+    }
+    const koridorlar = [];
+    for (let i = 1; i < dolu.length; i++) {
+      const bosluk = [dolu[i - 1][1], dolu[i][0]];
+      if (bosluk[1] - bosluk[0] >= 0.5) koridorlar.push((bosluk[0] + bosluk[1]) / 2);
+    }
+    if (!koridorlar.length) return kolonlar;
+
+    const yeni = kolonlar.map((k) => ({ ...k }));
+    for (let i = 0; i < yeni.length - 1; i++) {
+      const sinir = yeni[i].sag;
+      if (!dolu.some(([a, b]) => sinir > a && sinir < b)) continue; // zaten boşlukta
+      const enFazlaKayma =
+        0.7 * Math.min(yeni[i].x1 - yeni[i].x0, yeni[i + 1].x1 - yeni[i + 1].x0);
+      let enIyi = null;
+      for (const orta of koridorlar) {
+        const uzaklik = Math.abs(orta - sinir);
+        if (uzaklik > enFazlaKayma) continue;
+        if (!enIyi || uzaklik < enIyi.uzaklik) enIyi = { orta, uzaklik };
+      }
+      if (enIyi) {
+        yeni[i].sag = enIyi.orta;
+        yeni[i + 1].sol = enIyi.orta;
+      }
+    }
+    return yeni;
+  }
+
   /** Satır tablo başlığı mı? Miktar + (kod veya tanım) + en az üç tanıdık etiket. */
   function baslikSatiriMi(satir) {
     const kolonlar = kolonlariCoz(satir);
     const tanidik = new Set(kolonlar.map((k) => k.anahtar).filter(Boolean));
-    return tanidik.has('miktar') && (tanidik.has('kod') || tanidik.has('aciklama')) && tanidik.size >= 3
-      ? kolonlar
-      : null;
+    const tanimVar = tanidik.has('kod') || tanidik.has('aciklama') || tanidik.has('metin');
+    return tanidik.has('miktar') && tanimVar && tanidik.size >= 3 ? kolonlar : null;
   }
 
   const DIPNOT =
@@ -372,14 +431,19 @@ TT.ayristirici = (() => {
       const kodKolonu = kolonlar.find((k) => k.anahtar === 'kod');
       if (kodKolonu && !GERCEK_KOD.test(kodKolonu.sadeEtiket)) kodEtiketi = kodKolonu.etiket;
 
+      // Tablonun veri satırları — dipnota kadar.
+      const veriSatirlari = [];
+      for (let i = baslikIndeksi + 1; i < sayfaSatirlari.length; i++) {
+        if (DIPNOT.test(sade(sayfaSatirlari[i].metin))) break;
+        if (baslikSatiriMi(sayfaSatirlari[i])) continue; // tekrar eden başlık
+        veriSatirlari.push(sayfaSatirlari[i]);
+      }
+      kolonlar = sinirlariVeriyeGoreDuzelt(kolonlar, veriSatirlari);
+
       const siraKolonuVar = kolonlar.some((k) => k.anahtar === 'sira');
       let oncekiKalem = null;
 
-      for (let i = baslikIndeksi + 1; i < sayfaSatirlari.length; i++) {
-        const satir = sayfaSatirlari[i];
-        if (DIPNOT.test(sade(satir.metin))) break;
-        if (baslikSatiriMi(satir)) continue; // tekrar eden başlık
-
+      for (const satir of veriSatirlari) {
         const hucreler = hucreleriKur(kolonlar);
         if (!satiriHucrelereDagit(satir, kolonlar, hucreler)) continue;
         hucreleriOnar(hucreler);
@@ -390,23 +454,32 @@ TT.ayristirici = (() => {
           : Boolean(hucreMetni(hucreler.kod) || hucreMetni(hucreler.miktar));
 
         if (yeniKalem) {
-          // Ana altı kolona girmeyen alanlar (kalınlık, kalite, gost, tedarikçi…)
-          // kaybolmasın diye açıklamanın altındaki satıra toplanıyor.
-          const ekler = EK_KOLONLAR
+          // Ana kolonlara girmeyen alanlar (kalınlık, kalite, gost, tedarikçi…)
+          // kaybolmasın diye kalemin notuna toplanıyor.
+          const notlar = EK_KOLONLAR
             .map(([anahtar, etiket]) => [etiket, hucreMetni(hucreler[anahtar])])
             .filter(([, deger]) => deger)
-            .map(([etiket, deger]) => `${etiket}: ${deger}`);
+            .map(([etiket, deger]) => `${etiket}: ${deger}`)
+            .join(' · ');
+
+          const poz = hucreMetni(hucreler.poz);
+          const metin = hucreMetni(hucreler.metin);
+          const kodHucresi = hucreMetni(hucreler.kod);
 
           const kalem = {
             sayfa: sayfa.no,
             sira: siraHam ? Number(siraHam) : kalemler.length + 1,
-            metin: [hucreMetni(hucreler.metin), ...ekler].filter(Boolean).join(' · '),
+            metin,
             proje: hucreMetni(hucreler.proje),
-            poz: hucreMetni(hucreler.poz),
-            kod: hucreMetni(hucreler.kod),
-            aciklama: hucreMetni(hucreler.aciklama),
+            poz,
+            // Ayrı malzeme kodu kolonu olmayan formda sipariş no tek başına
+            // satırları ayırt etmiyor (üç satırda da aynı olabiliyor); poz ekleniyor.
+            kod: kodEtiketi ? [kodHucresi, poz].filter(Boolean).join('-') : kodHucresi,
+            // Bu formda ayrı bir tanım kolonu yok; açıklama malzeme metninden gelir.
+            aciklama: hucreMetni(hucreler.aciklama) || metin,
             miktar: hucreMetni(hucreler.miktar),
             birim: hucreMetni(hucreler.birim),
+            notlar,
           };
           kalem.miktarSayi = miktariSayiyaCevir(kalem.miktar);
           kalemler.push(kalem);
@@ -426,7 +499,7 @@ TT.ayristirici = (() => {
     }
     if (kodEtiketi) {
       uyarilar.push(
-        `Bu formda ayrı bir malzeme kodu kolonu yok; MALZEME KODU olarak "${kodEtiketi}" kolonu alındı.`
+        `Bu formda ayrı bir malzeme kodu kolonu yok; MALZEME KODU olarak "${kodEtiketi}" ve poz birleştirildi.`
       );
     }
     for (const k of kalemler) {
@@ -434,15 +507,17 @@ TT.ayristirici = (() => {
       if (k.miktarSayi === null) uyarilar.push(`Satır ${k.sira}: miktar okunamadı ("${k.miktar}").`);
     }
 
-    const nereden = [baslik.depoTanimi, baslik.depoYeri && `(${baslik.depoYeri})`]
-      .filter(Boolean)
-      .join(' ');
+    // Depo satırları olmayan formlar endüstriyel ambardan geliyor.
+    const nereden =
+      [baslik.depoTanimi, baslik.depoYeri && `(${baslik.depoYeri})`].filter(Boolean).join(' ') ||
+      VARSAYILAN_NEREDEN;
 
     return {
       baslik: {
         talepNo: baslik.talepNo ?? '',
         birim: baslik.talepEdenBirim ?? '',
-        kullanici: baslik.talepEdenKullanici ?? '',
+        // Talep eden kullanıcı alanı olmayan formlarda sabit değer yazılıyor.
+        kullanici: baslik.talepEdenKullanici || VARSAYILAN_KULLANICI,
         tarihSaat: baslik.talepTarihSaat ?? baslik.tarih ?? '',
         depoTanimi: baslik.depoTanimi ?? '',
         depoYeri: baslik.depoYeri ?? '',

@@ -35,6 +35,7 @@
 <script src="js/veritabani.js"></script>
 <script src="test/ornek.b64.js"></script>
 <script src="test/ornek2.b64.js"></script>
+<script src="test/ornek3.b64.js"></script>
 
 <script>
 'use strict';
@@ -138,8 +139,11 @@ async function ornekFormTesti() {
   esit(kalemler[0], {
     sayfa: 1, sira: 1, metin: 'İŞLENMİŞ DEMİR', proje: 'AKU.0179.40UJA.0.KZ.TB0016',
     poz: '34', kod: '4600032199', aciklama: '0179.40UJA.0.KZ.TB0016 / Ø20 B50',
-    miktar: '55,820', birim: 'KG', miktarSayi: 55.82,
+    miktar: '55,820', birim: 'KG', notlar: '', miktarSayi: 55.82,
   }, 'örnek form: ilk kalem birebir');
+  esit(kalemler[0].kod, '4600032199',
+    'örnek form: gerçek malzeme kodu poz ile birleştirilmez');
+  esit(baslik.kullanici, 'MKEFELIOGLU', 'örnek form: formdaki kullanıcı korunur');
   esit(kalemler[12].miktar, '57,110', 'örnek form: son kalemin miktarı');
   esit(kalemler[12].poz, '1', 'örnek form: son kalemin pozu');
   dogru(kalemler.every((k) => k.kod === '4600032199' && k.birim === 'KG' && k.miktarSayi > 0),
@@ -159,16 +163,42 @@ async function ikinciFormTesti() {
   esit(baslik.depoYeri, '4003', 'ikinci form: depo yeri ("Warehouse :")');
   esit(baslik.nereden, 'ICE YEŞİLOVACIK (4003)', 'ikinci form: nereden');
   esit(baslik.tarihSaat, '03.09.2026', 'ikinci form: tarih');
+  esit(baslik.kullanici, 'Reaktör 4 T.O.', 'ikinci form: kullanıcı alanı yok, sabit yazılır');
   dogru(
     uyarilar.some((u) => u.includes('Order No')),
     'ikinci form: malzeme kodu kolonu olmadığı söylenir'
   );
   esit(kalemler.length, 1, 'ikinci form: 1 kalem');
   esit(kalemler[0], {
-    sayfa: 1, sira: 10, metin: '', proje: 'AKU.0120.40UJA.0.KZ.LC0174',
-    poz: 'TA319-8', kod: 'EM-00689.23', aciklama: 'GÖMÜLÜ MALZEME',
-    miktar: '1', birim: 'ADT', miktarSayi: 1,
-  }, 'ikinci form: kalem birebir');
+    sayfa: 1, sira: 10, metin: 'GÖMÜLÜ MALZEME', proje: 'AKU.0120.40UJA.0.KZ.LC0174',
+    poz: 'TA319-8', kod: 'EM-00689.23-TA319-8', aciklama: 'GÖMÜLÜ MALZEME',
+    miktar: '1', birim: 'ADT', notlar: '', miktarSayi: 1,
+  }, 'ikinci form: kalem birebir (Material Description → metin, Order No + poz → kod)');
+}
+
+async function ucuncuFormTesti() {
+  // Depo satırları olmayan İngilizce form; üç kalemde de sipariş no aynı.
+  const bayt = TT.pdf.b64Ikili(window.ORNEK3_PDF_B64);
+  const { sayfalar } = await TT.pdf.pdfOku(bayt);
+  const { baslik, kalemler } = A().ayristir(sayfalar);
+
+  esit(baslik.talepNo, '0017206', 'üçüncü form: talep no');
+  esit(baslik.tarihSaat, '13.03.2026', 'üçüncü form: tarih');
+  esit(baslik.depoTanimi, '', 'üçüncü form: depo tanımı yok');
+  esit(baslik.depoYeri, '', 'üçüncü form: depo yeri yok');
+  esit(baslik.nereden, 'Endüstriyel', 'üçüncü form: depo yoksa nereden = Endüstriyel');
+  esit(baslik.kullanici, 'Reaktör 4 T.O.', 'üçüncü form: kullanıcı sabiti');
+
+  esit(kalemler.length, 3, 'üçüncü form: 3 kalem');
+  esit(kalemler.map((k) => k.poz), ['TA5', 'TA2', 'TA4'],
+    'üçüncü form: poz kolonu projeye karışmaz (başlığın solunda duruyor)');
+  esit(kalemler.map((k) => k.kod), ['EM-01316-TA5', 'EM-01316-TA2', 'EM-01316-TA4'],
+    'üçüncü form: aynı sipariş no poz ile ayrışır');
+  esit(kalemler.map((k) => k.miktar), ['2', '3', '2'], 'üçüncü form: miktarlar');
+  dogru(kalemler.every((k) => k.proje === 'AKU.0120.00USY.0.KZ.LC0019' && k.birim === 'ADT'),
+    'üçüncü form: proje ve birim tüm satırlarda doğru');
+  dogru(kalemler.every((k) => k.aciklama === 'GÖMÜLÜ ELEMAN' && k.metin === 'GÖMÜLÜ ELEMAN'),
+    'üçüncü form: açıklama malzeme metninden doldurulur');
 }
 
 function baslikBloguTesti() {
@@ -188,8 +218,8 @@ function baslikBloguTesti() {
   esit(kalemler.length, 1, 'başlık bloğu: veri satırı başlığa karışmaz');
   esit(kalemler[0].aciklama, 'GÖMÜLÜ', 'başlık bloğu: açıklama kolonu doğru');
   esit(kalemler[0].miktar, '1', 'başlık bloğu: miktar doğru');
-  esit(kalemler[0].metin, 'Kalınlık: 8 · Kalite: S355',
-    'başlık bloğu: taşan başlıklı ek kolonlar açıklamanın altına toplanır');
+  esit(kalemler[0].notlar, 'Kalınlık: 8 · Kalite: S355',
+    'başlık bloğu: taşan başlıklı ek kolonlar nota toplanır');
 }
 
 async function veritabaniTesti({ baslik, kalemler }) {
@@ -205,6 +235,19 @@ async function veritabaniTesti({ baslik, kalemler }) {
     esit(db.kalemler({ arama: q }).length, 13, `arama: "${q}" 13 kalem bulur`);
   }
   esit(db.kalemler({ arama: 'bakır' }).length, 0, 'arama: "bakır" hiçbir şey bulmaz');
+
+  // Ek kolonlardan gelen not veritabanına geçiyor ve aranabiliyor mu?
+  db.talepEkle({
+    baslik: { talepNo: 'NOT-1', nereden: 'Endüstriyel' },
+    kalemler: [{ sira: 1, kod: 'K1', aciklama: 'A', metin: 'M', miktar: '1', birim: 'AD',
+                 notlar: 'Kalınlık: 8 · Kalite: S355' }],
+    pdf: { ozet: 'ozet2', ad: 'y.pdf', kaynak: 'metin', sayfaSayisi: 1 },
+  });
+  const notluKalem = db.kalemler({ talepNo: 'NOT-1' })[0];
+  esit(notluKalem.notlar, 'Kalınlık: 8 · Kalite: S355', 'not: ek kolonlar veritabanına yazılır');
+  esit(notluKalem.nereden, 'Endüstriyel', 'not: nereden başlıktan devralınır');
+  esit(db.kalemler({ arama: 'S355' }).length, 1, 'not: ek kolon içeriği aranabilir');
+  db.talepSil(notluKalem.talep_id);
 
   dogru(db.pdfVarMi('ozet1'), 'kopya: aynı PDF özeti tanınır');
   esit(db.pdfVarMi('baska'), null, 'kopya: farklı özet tanınmaz');
@@ -264,6 +307,7 @@ async function veritabaniTesti({ baslik, kalemler }) {
     yapisikBirimTesti();
     const cozum = await ornekFormTesti();
     await ikinciFormTesti();
+    await ucuncuFormTesti();
     baslikBloguTesti();
     await veritabaniTesti(cozum);
   } catch (e) {

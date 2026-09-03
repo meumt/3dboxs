@@ -201,12 +201,12 @@ CREATE INDEX IF NOT EXISTS ix_kalem_kod   ON kalem(malzeme_kodu);
             aciklama: k.aciklama ?? '',
             metin: k.metin ?? '',
             nereden: k.nereden || baslik.nereden || '',
-            notlar: '',
+            notlar: k.notlar ?? '',
           };
           this.calistir(
             `INSERT INTO kalem (talep_id, sira, talep_no, proje, poz, malzeme_kodu, aciklama,
-                                metin, miktar, miktar_sayi, birim, nereden, arama_metni)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+                                metin, miktar, miktar_sayi, birim, nereden, notlar, arama_metni)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
             [
               talepId,
               Number(k.sira) || i,
@@ -220,6 +220,7 @@ CREATE INDEX IF NOT EXISTS ix_kalem_kod   ON kalem(malzeme_kodu);
               k.miktarSayi ?? k.miktar_sayi ?? null,
               k.birim ?? '',
               satir.nereden,
+              satir.notlar,
               aramaMetni(satir),
             ]
           );

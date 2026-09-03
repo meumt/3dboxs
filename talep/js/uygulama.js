@@ -182,6 +182,8 @@ TT.uygulama = (() => {
   function kalemSatiri(k, gruplu) {
     const miktar =
       kacir(k.miktar) + (k.birim ? ` <span style="color:var(--soluk)">${kacir(k.birim)}</span>` : '');
+    // Bazı formlarda açıklama zaten malzeme metninden geliyor; iki kez yazmayalım.
+    const altSatir = [k.metin === k.aciklama ? '' : k.metin, k.notlar].filter(Boolean).join(' · ');
     return `
     <tr class="satir-${k.durum}" data-id="${k.id}">
       <td class="durumHucre">${durumDugmeleri(k.durum, '')}</td>
@@ -190,7 +192,7 @@ TT.uygulama = (() => {
       <td class="kod"><span class="duzenlenir" contenteditable data-alan="malzeme_kodu">${kacir(k.malzeme_kodu)}</span></td>
       <td>
         <span class="aciklamaAna duzenlenir" contenteditable data-alan="aciklama">${kacir(k.aciklama)}</span>
-        ${k.metin ? `<span class="altYazi">${kacir(k.metin)}</span>` : ''}
+        ${altSatir ? `<span class="altYazi">${kacir(altSatir)}</span>` : ''}
       </td>
       <td class="sayi">${miktar}</td>
       <td><span class="duzenlenir" contenteditable data-alan="nereden">${kacir(k.nereden)}</span></td>

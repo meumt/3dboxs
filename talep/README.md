@@ -93,16 +93,41 @@ başlığına yansır.
 
 ### Desteklenen formlar
 
-İki form düzeni denenmiş durumda ve ikisi de tam çıkıyor:
+İki form düzeni deneniyor, dördü de `ornek/` klasöründe duruyor ve testlerde
+doğrulanıyor:
 
-- **Türkçe SAP formu** — *IC İçtaş Nükleer Ambardan Malzeme Talep Formu*.
-- **İngilizce form** — *Warehouse Material Request Form*: 13 kolon, başlık
-  etiketlerinin bir kısmı iki satıra taşıyor (*Thickness / (mm)*).
+- **Türkçe SAP formu** — *IC İçtaş Nükleer Ambardan Malzeme Talep Formu*
+  (`ornek-talep.pdf`, `ornek-talep-4.pdf`).
+- **İngilizce form** — *Warehouse Material Request Form* (`ornek-talep-2.pdf`,
+  `ornek-talep-3.pdf`): 13 kolon, başlık etiketlerinin bir kısmı iki satıra
+  taşıyor (*Thickness / (mm)*), bazılarında depo satırları hiç yok.
 
-Kolon adları hem Türkçe hem İngilizce tanınıyor. İkinci formda ayrı bir malzeme
-kodu kolonu yok; MALZEME KODU olarak *Order No* alınıyor ve onay ekranında bu
-söyleniyor. Altı ana kolona girmeyen alanlar (kalınlık, kalite, gost, tedarikçi,
-yer, not) kaybolmuyor — açıklamanın altında küçük punto ile toplanıyor.
+İngilizce formun kolonları şöyle karşılanıyor:
+
+| Uygulamadaki alan | İngilizce formdaki kaynak |
+|---|---|
+| Talep No | *Request form no* |
+| Tarih | *Date* |
+| Depo Yeri | *Warehouse* |
+| Depo Tanımı | *Warehouse Desc.* |
+| Talep Eden Kullanıcı | formda yok → sabit **Reaktör 4 T.O.** |
+| Malzeme/Talep Metni | *Material Description* |
+| Proje | *Project Drawing Number* |
+| Poz | *Item/Poz* |
+| Malzeme Kodu | *Order No* + *Item/Poz* |
+| Miktar | *Quantity* |
+| Birim | *Unit* |
+
+Üç ayrıntı:
+
+- **Depo satırları yoksa** NEREDEN **Endüstriyel** yazılır.
+- **Malzeme kodu** bu formda tek başına ayırt edici değil: aynı *Order No*
+  birden çok satırda geçebiliyor (`EM-01316` üç kalemde birden). Bu yüzden poz
+  ekleniyor: `EM-01316-TA5`, `EM-01316-TA2`… Türkçe formdaki gerçek malzeme
+  kodu (`4600032199`) olduğu gibi kalır, poz eklenmez.
+- **AÇIKLAMA** kolonunun karşılığı bu formda yok; malzeme metninden doldurulur.
+  Kalınlık, kalite, gost, tedarikçi, yer ve remarks alanları da kaybolmaz —
+  kalemin notuna toplanır ve açıklamanın altında küçük punto ile görünür.
 
 Başka bir düzen gelirse ayrıştırıcı yine kolon başlıklarını arar; tanıyamazsa
 onay ekranında uyarır ve satırları elle düzeltirsiniz.
@@ -144,7 +169,7 @@ talep/
 │   ├── depo.js                 klasöre / tarayıcı belleğine yazma
 │   ├── uygulama.js             arayüz ve akış
 │   └── kutuphane/              dış kütüphaneler (aşağıya bakın)
-├── ornek/                      ayrıştırıcının doğrulandığı iki örnek form
+├── ornek/                      ayrıştırıcının doğrulandığı dört örnek form
 └── test/                       aynı PDF'ler, testlerin kullanması için gömülü
 ```
 
@@ -183,11 +208,18 @@ Satır sırasına göre metin okumak tablolarda güvenilmez; onun yerine
    2 pt. Sabit bir eşik ikisini tutturamadığı için birkaç eşik denenip **en çok
    kolonu tanıyan** seçiliyor. Etiket öbeklerinin arasındaki orta noktalar kolon
    sınırı olur.
-5. Her kelime merkez `x`'ine göre bir kolona düşer.
-6. Hücreler tipine göre **onarılır**: miktar sayı olmalı, birim harf olmalı, sıra
+5. Bu orta noktalar **veriye bakılarak keskinleştirilir**. Başlık ortalı, veri
+   sola dayalı olduğunda orta nokta bir hücrenin içine düşebiliyor: bir formda
+   *Item/Poz* başlığı x=374'te başlarken altındaki `TA5` 341'de duruyor ve proje
+   kolonuna kayıyordu. Veri kelimelerinin arasındaki boş koridorlar çıkarılıp,
+   bir hücreyi ortadan kesen sınır en yakın koridora çekiliyor — ama yalnızca dar
+   kolonun genişliğiyle sınırlı bir mesafe kadar, ki hiç verisi olmayan bir
+   kolonun sınırı yerinden oynamasın.
+6. Her kelime merkez `x`'ine göre bir kolona düşer.
+7. Hücreler tipine göre **onarılır**: miktar sayı olmalı, birim harf olmalı, sıra
    no tek sayı olmalı. Sınıra oturan parçalar (örnek formda `B50` ile `55,820`
    arasındaki gibi) böylece doğru hücreye taşınır.
-7. Sıra no ile başlamayan satırlar, bir önceki kalemin devamı sayılır —
+8. Sıra no ile başlamayan satırlar, bir önceki kalemin devamı sayılır —
    açıklaması alt satıra taşan kalemler bölünmez.
 
 Kolon başlıkları tanınmazsa veya bir hücre okunamazsa onay ekranında sarı bir
@@ -195,9 +227,9 @@ uyarı çıkar; kayıt öncesi elle düzeltilir.
 
 ## Testler
 
-`test.html` dosyasına çift tıklayın. İki örnek formun da eksiksiz okunduğunu,
-Türkçe aramayı, kolon sınırı onarımını, iki satıra taşan başlıkları, onay/red
-durumlarını ve veritabanı işlemlerini doğrular (72 test).
+`test.html` dosyasına çift tıklayın. Örnek formların eksiksiz okunduğunu, Türkçe
+aramayı, kolon sınırı onarımını, iki satıra taşan başlıkları, onay/red
+durumlarını ve veritabanı işlemlerini doğrular (90 test).
 
 ## Bilinen sınırlar
 
